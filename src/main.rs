@@ -115,11 +115,15 @@ fn main_3(opts: Opts, stdout: &mut impl Write) -> anyhow::Result<()> {
                     ..
                 }) => {
                     input_buf.push(x);
-                    continue;
+                    continue; // Don't redraw
                 }
                 Key(KeyEvent {
                     code: Char('g'), ..
-                }) => match input_buf.parse::<usize>() {
+                })
+                | Key(KeyEvent {
+                    code: Char('G'), ..
+                })
+                | Key(KeyEvent { code: Enter, .. }) => match input_buf.parse::<usize>() {
                     Err(_) => (),
                     Ok(0) => start_line = 0,
                     Ok(x) => start_line = min(max_line, x - 1),
@@ -132,8 +136,14 @@ fn main_3(opts: Opts, stdout: &mut impl Write) -> anyhow::Result<()> {
                 | Key(KeyEvent {
                     code: Char('q'), ..
                 }) => return Ok(()),
-                Key(KeyEvent { code: Down, .. }) => start_line = add(start_line, 1),
-                Key(KeyEvent { code: Up, .. }) => start_line = start_line.saturating_sub(1),
+                Key(KeyEvent { code: Down, .. })
+                | Key(KeyEvent {
+                    code: Char('j'), ..
+                }) => start_line = add(start_line, 1),
+                Key(KeyEvent { code: Up, .. })
+                | Key(KeyEvent {
+                    code: Char('k'), ..
+                }) => start_line = start_line.saturating_sub(1),
                 Key(KeyEvent { code: PageDown, .. }) => {
                     start_line = add(start_line, rows as usize - 2)
                 }
@@ -142,14 +152,19 @@ fn main_3(opts: Opts, stdout: &mut impl Write) -> anyhow::Result<()> {
                 }
                 Key(KeyEvent { code: Home, .. }) => start_line = 0,
                 Key(KeyEvent { code: End, .. }) => start_line = max_line,
-                Key(KeyEvent { code: Right, .. }) => start_col += 1,
-                Key(KeyEvent { code: Left, .. }) => start_col = start_col.saturating_sub(1),
+                Key(KeyEvent { code: Right, .. })
+                | Key(KeyEvent {
+                    code: Char('l'), ..
+                }) => start_col += 1,
+                Key(KeyEvent { code: Left, .. })
+                | Key(KeyEvent {
+                    code: Char('h'), ..
+                }) => start_col = start_col.saturating_sub(1),
                 Resize(c, r) => {
                     cols = c;
                     rows = r
                 }
-                Mouse(_) => (),
-                Key(_) => continue,
+                _ => continue, // Don't redraw
             }
             break;
         }
