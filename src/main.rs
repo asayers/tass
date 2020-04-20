@@ -1,7 +1,7 @@
 use crossterm::*;
 use memchr::memchr_iter;
 use memmap::Mmap;
-use ndarray::Array2;
+use ndarray::prelude::*;
 use ndarray_csv::Array2Reader;
 use pad::PadStr;
 use std::cmp::min;
@@ -95,7 +95,14 @@ fn main_3(opts: Opts, stdout: &mut impl Write) -> anyhow::Result<()> {
         let end_line = min(newlines.len() - 2, start_line + rows as usize - 2);
         let matrix = read_matrix(&mut file, start_line, end_line)?;
 
-        draw(stdout, cols as usize, start_col, &hdrs, &matrix)?;
+        draw(
+            stdout,
+            rows as usize,
+            cols as usize,
+            start_col,
+            &hdrs,
+            &matrix,
+        )?;
 
         let mut input_buf = String::new();
         let mut search = false;
@@ -243,10 +250,11 @@ fn main_3(opts: Opts, stdout: &mut impl Write) -> anyhow::Result<()> {
 
 fn draw(
     stdout: &mut impl Write,
+    rows: usize,
     cols: usize,
     start_col: usize,
     hdrs: &csv::StringRecord,
-    matrix: &ndarray::Array2<String>,
+    matrix: &Array2<String>,
 ) -> anyhow::Result<()> {
     // Compute the widths
     let mut budget = cols;
@@ -282,6 +290,14 @@ fn draw(
             stdout.queue(style::Print(field.with_exact_width(*w)))?;
         }
     }
+
+    stdout.queue(style::SetForegroundColor(style::Color::Blue))?;
+    for _ in 0..rows.saturating_sub(matrix.len_of(Axis(0))) {
+        stdout
+            .queue(cursor::MoveToNextLine(1))?
+            .queue(style::Print("~"))?;
+    }
+    stdout.queue(style::ResetColor)?;
 
     Ok(())
 }
