@@ -285,7 +285,11 @@ fn draw(
         .queue(style::SetAttribute(style::Attribute::Underlined))?
         .queue(style::SetForegroundColor(style::Color::Yellow))?;
     for (field, w) in hdrs.iter().zip(&widths) {
-        stdout.queue(style::Print(field.with_exact_width(*w)))?;
+        if *w > 0 {
+            stdout
+                .queue(style::Print(" "))?
+                .queue(style::Print(field.with_exact_width(*w - 1)))?;
+        }
     }
     stdout.queue(style::ResetColor)?;
 
@@ -301,7 +305,11 @@ fn draw(
             )))?
             .queue(style::SetAttribute(style::Attribute::Reset))?;
         for (field, w) in row.iter().zip(&widths) {
-            stdout.queue(style::Print(field.with_exact_width(*w)))?;
+            if *w > 0 {
+                stdout
+                    .queue(style::Print(" "))?
+                    .queue(style::Print(field.with_exact_width(*w - 1)))?;
+            }
         }
     }
 
