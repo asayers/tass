@@ -99,6 +99,7 @@ fn main_3(opts: Opts, stdout: &mut impl Write) -> anyhow::Result<()> {
             stdout,
             rows as usize,
             cols as usize,
+            start_line,
             start_col,
             &hdrs,
             &matrix,
@@ -107,11 +108,7 @@ fn main_3(opts: Opts, stdout: &mut impl Write) -> anyhow::Result<()> {
         let mut input_buf = String::new();
         let mut search = false;
         loop {
-            let prompt = if search {
-                format!("/")
-            } else {
-                format!("ln {}-{}: ", start_line + 1, end_line + 1)
-            };
+            let prompt = if search { "/" } else { ":" };
             stdout
                 .queue(cursor::MoveTo(0, rows))?
                 .queue(terminal::Clear(terminal::ClearType::CurrentLine))?
@@ -252,12 +249,15 @@ fn draw(
     stdout: &mut impl Write,
     rows: usize,
     cols: usize,
+    start_line: usize,
     start_col: usize,
     hdrs: &csv::StringRecord,
     matrix: &Array2<String>,
 ) -> anyhow::Result<()> {
     // Compute the widths
-    let mut budget = cols;
+    let end_line = start_line + matrix.len_of(Axis(0)) - 1;
+    let linnums_len = end_line.to_string().len() + 1;
+    let mut budget = cols - linnums_len;
     let widths = std::iter::repeat(0)
         .take(start_col)
         .chain(hdrs.iter().enumerate().skip(start_col).map(|(i, hdr)| {
@@ -276,7 +276,10 @@ fn draw(
 
     // Print the headers
     stdout
-        .queue(cursor::MoveTo(0, 0))?
+        .queue(cursor::MoveTo(linnums_len as u16 - 1, 0))?
+        .queue(style::SetAttribute(style::Attribute::Dim))?
+        .queue(style::Print(format!("│",)))?
+        .queue(style::SetAttribute(style::Attribute::Reset))?
         .queue(style::SetForegroundColor(style::Color::Yellow))?;
     for (field, w) in hdrs.iter().zip(&widths) {
         stdout.queue(style::Print(field.with_exact_width(*w)))?;
@@ -284,8 +287,16 @@ fn draw(
     stdout.queue(style::ResetColor)?;
 
     // Print the body
-    for row in matrix.outer_iter() {
-        stdout.queue(cursor::MoveToNextLine(1))?;
+    for (i, row) in matrix.outer_iter().enumerate() {
+        stdout
+            .queue(cursor::MoveToNextLine(1))?
+            .queue(style::SetAttribute(style::Attribute::Dim))?
+            .queue(style::Print(format!(
+                "{:>w$}│",
+                i + start_line + 1,
+                w = linnums_len - 1
+            )))?
+            .queue(style::SetAttribute(style::Attribute::Reset))?;
         for (field, w) in row.iter().zip(&widths) {
             stdout.queue(style::Print(field.with_exact_width(*w)))?;
         }
