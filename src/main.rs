@@ -75,41 +75,89 @@ fn main_3(opts: Opts, stdout: &mut impl Write) -> anyhow::Result<()> {
     let newlines = LineOffsets::new(&file)?;
     let hdrs = csv::Reader::from_reader(&mut file).headers()?.clone();
 
-    let mut read_matrix = |start_line: usize, end_line: usize| -> anyhow::Result<Array2<String>> {
-        let byte_range = newlines.line2range(start_line).start..newlines.line2range(end_line).end;
-        let rdr = take_range(&mut file, byte_range)?;
-        let mut rdr = csv::ReaderBuilder::new()
-            .trim(csv::Trim::All)
-            .from_reader(rdr);
-        Ok(rdr.deserialize_array2::<String>((end_line - start_line, hdrs.len()))?)
-    };
+    let read_matrix =
+        |file: &mut File, start_line: usize, end_line: usize| -> anyhow::Result<Array2<String>> {
+            let byte_range =
+                newlines.line2range(start_line).start..newlines.line2range(end_line).end;
+            let rdr = take_range(file, byte_range)?;
+            let mut rdr = csv::ReaderBuilder::new()
+                .trim(csv::Trim::All)
+                .from_reader(rdr);
+            Ok(rdr.deserialize_array2::<String>((end_line - start_line, hdrs.len()))?)
+        };
 
     let (mut cols, mut rows) = terminal::size()?;
     let mut start_line = 0usize;
     let mut start_col = 0usize;
+    let mut msgs = String::new();
+    let mut last_search = String::new();
     loop {
         let end_line = min(newlines.len() - 2, start_line + rows as usize - 2);
-        let matrix = read_matrix(start_line, end_line)?;
+        let matrix = read_matrix(&mut file, start_line, end_line)?;
 
         draw(stdout, cols as usize, start_col, &hdrs, &matrix)?;
 
         let mut input_buf = String::new();
+        let mut search = false;
         loop {
+            let prompt = if search {
+                format!("/")
+            } else {
+                format!("ln {}-{}: ", start_line + 1, end_line + 1)
+            };
             stdout
                 .queue(cursor::MoveTo(0, rows))?
                 .queue(terminal::Clear(terminal::ClearType::CurrentLine))?
-                .queue(style::Print(format!(
-                    "ln {}-{}: {}",
-                    start_line + 1,
-                    end_line + 1,
-                    input_buf,
-                )))?;
+                .queue(style::Print(&prompt))?
+                .queue(style::Print(&input_buf))?
+                .queue(cursor::MoveTo(cols - msgs.len() as u16, rows))?
+                .queue(style::SetForegroundColor(style::Color::Blue))?
+                .queue(style::Print(&msgs.trim()))?
+                .queue(style::ResetColor)?
+                .queue(cursor::MoveTo(
+                    (prompt.len() + input_buf.len()) as u16,
+                    rows,
+                ))?;
             stdout.flush()?;
 
             let max_line = newlines.len() - 2;
             let add = |start_line: usize, x: usize| min(max_line, start_line.saturating_add(x));
             use crossterm::event::{Event::*, KeyCode::*, KeyEvent, KeyModifiers};
             match event::read()? {
+                Key(KeyEvent {
+                    code: Backspace, ..
+                }) => {
+                    if !input_buf.is_empty() {
+                        input_buf.pop();
+                        continue;
+                    }
+                }
+                Key(KeyEvent { code: Char(x), .. }) if search => {
+                    input_buf.push(x);
+                    continue; // Don't redraw
+                }
+                Key(KeyEvent { code: Esc, .. }) if search => (), // leave search mode
+                Key(KeyEvent { code: Enter, .. }) if search => {
+                    if !input_buf.is_empty() {
+                        last_search = input_buf.clone();
+                    }
+                    let y = start_line + if input_buf.is_empty() { 2 } else { 1 };
+                    let x = newlines.line2range(y).start;
+                    file.seek(std::io::SeekFrom::Start(x))?;
+                    let matcher = grep_regex::RegexMatcher::new(&last_search)?;
+                    let sink = grep_searcher::sinks::UTF8(|line, txt| {
+                        msgs = format!("found something: {} {}", line, txt);
+                        start_line = add(y - 1, line as usize - 1);
+                        Ok(false)
+                    });
+                    grep_searcher::Searcher::new().search_file(&matcher, &file, sink)?;
+                }
+                Key(KeyEvent {
+                    code: Char('/'), ..
+                }) => {
+                    search = true;
+                    continue;
+                }
                 Key(KeyEvent {
                     code: Char(x @ '0'..='9'),
                     ..
@@ -199,7 +247,7 @@ fn draw(
     // Print the headers
     stdout
         .queue(cursor::MoveTo(0, 0))?
-        .queue(style::SetForegroundColor(style::Color::Blue))?;
+        .queue(style::SetForegroundColor(style::Color::Yellow))?;
     for (field, w) in hdrs.iter().zip(&widths) {
         stdout.queue(style::Print(field.with_exact_width(*w)))?;
     }
