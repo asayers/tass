@@ -91,6 +91,7 @@ fn main_3(opts: Opts, stdout: &mut impl Write) -> anyhow::Result<()> {
     let mut start_col = 0usize;
     let mut msgs = String::new();
     let mut last_search = String::new();
+    let mut exclude = vec![];
     loop {
         let end_line = min(newlines.len() - 2, start_line + rows as usize - 2);
         let matrix = read_matrix(&mut file, start_line, end_line)?;
@@ -103,12 +104,23 @@ fn main_3(opts: Opts, stdout: &mut impl Write) -> anyhow::Result<()> {
             start_col,
             &hdrs,
             &matrix,
+            &exclude,
         )?;
 
+        #[derive(Clone, Copy)]
+        enum Mode {
+            Jump,
+            Search,
+            Exclude,
+        }
         let mut input_buf = String::new();
-        let mut search = false;
+        let mut mode = Mode::Jump;
         loop {
-            let prompt = if search { "/" } else { ":" };
+            let prompt = match mode {
+                Mode::Jump => ":",
+                Mode::Search => "/",
+                Mode::Exclude => "-",
+            };
             stdout
                 .queue(cursor::MoveTo(0, rows))?
                 .queue(terminal::Clear(terminal::ClearType::CurrentLine))?
@@ -145,96 +157,159 @@ fn main_3(opts: Opts, stdout: &mut impl Write) -> anyhow::Result<()> {
                 anyhow::Result::<_>::Ok(())
             };
             use crossterm::event::{Event::*, KeyCode::*, KeyEvent, KeyModifiers};
-            match event::read()? {
-                Key(KeyEvent {
-                    code: Backspace, ..
-                }) => {
+            match (mode, event::read()?) {
+                (
+                    _,
+                    Key(KeyEvent {
+                        code: Backspace, ..
+                    }),
+                ) => {
                     if !input_buf.is_empty() {
                         input_buf.pop();
                         continue;
                     }
                 }
-                Key(KeyEvent { code: Char(x), .. }) if search => {
+                (
+                    Mode::Jump,
+                    Key(KeyEvent {
+                        code: Char('-'), ..
+                    }),
+                ) => {
+                    mode = Mode::Exclude;
+                    continue;
+                }
+                (Mode::Exclude, Key(KeyEvent { code: Char(x), .. })) => {
                     input_buf.push(x);
                     continue; // Don't redraw
                 }
-                Key(KeyEvent { code: Esc, .. }) if search => (), // leave search mode
-                Key(KeyEvent { code: Enter, .. }) if search => {
+                (Mode::Exclude, Key(KeyEvent { code: Enter, .. })) => {
+                    exclude.push(input_buf.clone());
+                }
+                (Mode::Search, Key(KeyEvent { code: Char(x), .. })) => {
+                    input_buf.push(x);
+                    continue; // Don't redraw
+                }
+                (Mode::Search, Key(KeyEvent { code: Esc, .. })) => (), // leave search mode
+                (Mode::Search, Key(KeyEvent { code: Enter, .. })) => {
                     do_search()?;
                 }
-                Key(KeyEvent {
-                    code: Char('n'),
-                    modifiers: KeyModifiers::NONE,
-                }) => {
+                (
+                    Mode::Jump,
+                    Key(KeyEvent {
+                        code: Char('n'),
+                        modifiers: KeyModifiers::NONE,
+                    }),
+                ) => {
                     do_search()?;
                 }
-                Key(KeyEvent {
-                    code: Char('/'), ..
-                }) => {
-                    search = true;
+                (
+                    Mode::Jump,
+                    Key(KeyEvent {
+                        code: Char('/'), ..
+                    }),
+                ) => {
+                    mode = Mode::Search;
                     continue;
                 }
-                Key(KeyEvent {
-                    code: Char('?'), ..
-                })
-                | Key(KeyEvent {
-                    code: Char('n'),
-                    modifiers: KeyModifiers::SHIFT,
-                }) => {
+                (
+                    Mode::Jump,
+                    Key(KeyEvent {
+                        code: Char('?'), ..
+                    }),
+                ) => {
                     msgs.clear();
                     msgs.push_str("reverse search not implemented yet");
                 }
-                Key(KeyEvent {
-                    code: Char(x @ '0'..='9'),
-                    ..
-                }) => {
+                (
+                    Mode::Jump,
+                    Key(KeyEvent {
+                        code: Char('n'),
+                        modifiers: KeyModifiers::SHIFT,
+                    }),
+                ) => {
+                    msgs.clear();
+                    msgs.push_str("reverse search not implemented yet");
+                }
+                (
+                    Mode::Jump,
+                    Key(KeyEvent {
+                        code: Char(x @ '0'..='9'),
+                        ..
+                    }),
+                ) => {
                     input_buf.push(x);
                     continue; // Don't redraw
                 }
-                Key(KeyEvent {
-                    code: Char('g'), ..
-                })
-                | Key(KeyEvent {
-                    code: Char('G'), ..
-                })
-                | Key(KeyEvent { code: Enter, .. }) => match input_buf.parse::<usize>() {
-                    Err(_) => (),
-                    Ok(0) => start_line = 0,
-                    Ok(x) => start_line = min(max_line, x - 1),
-                },
-                Key(KeyEvent { code: Esc, .. })
-                | Key(KeyEvent {
-                    code: Char('c'),
-                    modifiers: KeyModifiers::CONTROL,
-                })
-                | Key(KeyEvent {
-                    code: Char('q'), ..
-                }) => return Ok(()),
-                Key(KeyEvent { code: Down, .. })
-                | Key(KeyEvent {
-                    code: Char('j'), ..
-                }) => start_line = add(start_line, 1),
-                Key(KeyEvent { code: Up, .. })
-                | Key(KeyEvent {
-                    code: Char('k'), ..
-                }) => start_line = start_line.saturating_sub(1),
-                Key(KeyEvent { code: PageDown, .. }) => {
+                (
+                    Mode::Jump,
+                    Key(KeyEvent {
+                        code: Char('g'), ..
+                    }),
+                )
+                | (
+                    Mode::Jump,
+                    Key(KeyEvent {
+                        code: Char('G'), ..
+                    }),
+                )
+                | (Mode::Jump, Key(KeyEvent { code: Enter, .. })) => {
+                    match input_buf.parse::<usize>() {
+                        Err(_) => (),
+                        Ok(0) => start_line = 0,
+                        Ok(x) => start_line = min(max_line, x - 1),
+                    }
+                }
+                (Mode::Jump, Key(KeyEvent { code: Esc, .. }))
+                | (
+                    Mode::Jump,
+                    Key(KeyEvent {
+                        code: Char('c'),
+                        modifiers: KeyModifiers::CONTROL,
+                    }),
+                )
+                | (
+                    Mode::Jump,
+                    Key(KeyEvent {
+                        code: Char('q'), ..
+                    }),
+                ) => return Ok(()),
+                (Mode::Jump, Key(KeyEvent { code: Down, .. }))
+                | (
+                    Mode::Jump,
+                    Key(KeyEvent {
+                        code: Char('j'), ..
+                    }),
+                ) => start_line = add(start_line, 1),
+                (Mode::Jump, Key(KeyEvent { code: Up, .. }))
+                | (
+                    Mode::Jump,
+                    Key(KeyEvent {
+                        code: Char('k'), ..
+                    }),
+                ) => start_line = start_line.saturating_sub(1),
+                (Mode::Jump, Key(KeyEvent { code: PageDown, .. })) => {
                     start_line = add(start_line, rows as usize - 2)
                 }
-                Key(KeyEvent { code: PageUp, .. }) => {
+                (Mode::Jump, Key(KeyEvent { code: PageUp, .. })) => {
                     start_line = start_line.saturating_sub(rows as usize - 2)
                 }
-                Key(KeyEvent { code: Home, .. }) => start_line = 0,
-                Key(KeyEvent { code: End, .. }) => start_line = max_line,
-                Key(KeyEvent { code: Right, .. })
-                | Key(KeyEvent {
-                    code: Char('l'), ..
-                }) => start_col += 1,
-                Key(KeyEvent { code: Left, .. })
-                | Key(KeyEvent {
-                    code: Char('h'), ..
-                }) => start_col = start_col.saturating_sub(1),
-                Resize(c, r) => {
+                (Mode::Jump, Key(KeyEvent { code: Home, .. })) => start_line = 0,
+                (Mode::Jump, Key(KeyEvent { code: End, .. })) => start_line = max_line,
+                (Mode::Jump, Key(KeyEvent { code: Right, .. }))
+                | (
+                    Mode::Jump,
+                    Key(KeyEvent {
+                        code: Char('l'), ..
+                    }),
+                ) => start_col += 1,
+                (Mode::Jump, Key(KeyEvent { code: Left, .. }))
+                | (
+                    Mode::Jump,
+                    Key(KeyEvent {
+                        code: Char('h'), ..
+                    }),
+                ) => start_col = start_col.saturating_sub(1),
+                (_, Resize(c, r)) => {
                     cols = c;
                     rows = r
                 }
@@ -253,6 +328,7 @@ fn draw(
     start_col: usize,
     hdrs: &csv::StringRecord,
     matrix: &Array2<String>,
+    exclude: &[String],
 ) -> anyhow::Result<()> {
     // Compute the widths
     let end_line = start_line + matrix.len_of(Axis(0)) - 1;
@@ -261,11 +337,15 @@ fn draw(
     let widths = std::iter::repeat(0)
         .take(start_col)
         .chain(hdrs.iter().enumerate().skip(start_col).map(|(i, hdr)| {
-            let len = std::iter::once(hdr)
-                .chain(matrix.column(i).into_iter().map(|x| x.as_str()))
-                .map(|x| x.len())
-                .max()
-                .unwrap();
+            let len = if exclude.iter().any(|x| x == hdr) {
+                hdr.len()
+            } else {
+                std::iter::once(hdr)
+                    .chain(matrix.column(i).into_iter().map(|x| x.as_str()))
+                    .map(|x| x.len())
+                    .max()
+                    .unwrap()
+            };
             let x = min(budget, len + 2);
             budget = budget.saturating_sub(len + 2);
             x
