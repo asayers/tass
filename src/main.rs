@@ -276,10 +276,13 @@ fn draw(
 
     // Print the headers
     stdout
-        .queue(cursor::MoveTo(linnums_len as u16 - 1, 0))?
+        .queue(cursor::MoveTo(0, 0))?
+        .queue(style::SetAttribute(style::Attribute::Underlined))?
         .queue(style::SetAttribute(style::Attribute::Dim))?
-        .queue(style::Print(format!("│",)))?
+        .queue(style::Print(" ".repeat(linnums_len - 1)))?
+        .queue(style::Print(format!("│")))?
         .queue(style::SetAttribute(style::Attribute::Reset))?
+        .queue(style::SetAttribute(style::Attribute::Underlined))?
         .queue(style::SetForegroundColor(style::Color::Yellow))?;
     for (field, w) in hdrs.iter().zip(&widths) {
         stdout.queue(style::Print(field.with_exact_width(*w)))?;
