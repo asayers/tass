@@ -122,6 +122,24 @@ fn main_3(opts: Opts, stdout: &mut impl Write) -> anyhow::Result<()> {
 
             let max_line = newlines.len() - 2;
             let add = |start_line: usize, x: usize| min(max_line, start_line.saturating_add(x));
+            let mut do_search = || {
+                if !input_buf.is_empty() {
+                    last_search = input_buf.clone();
+                }
+                let y = start_line + if input_buf.is_empty() { 2 } else { 1 };
+                let x = newlines.line2range(y).start;
+                file.seek(std::io::SeekFrom::Start(x))?;
+                let matcher = grep_regex::RegexMatcher::new(&last_search)?;
+                msgs.clear();
+                msgs.push_str("No match");
+                let sink = grep_searcher::sinks::UTF8(|line, _| {
+                    msgs.clear();
+                    start_line = add(y - 1, line as usize - 1);
+                    Ok(false)
+                });
+                grep_searcher::Searcher::new().search_file(&matcher, &file, sink)?;
+                anyhow::Result::<_>::Ok(())
+            };
             use crossterm::event::{Event::*, KeyCode::*, KeyEvent, KeyModifiers};
             match event::read()? {
                 Key(KeyEvent {
@@ -138,25 +156,29 @@ fn main_3(opts: Opts, stdout: &mut impl Write) -> anyhow::Result<()> {
                 }
                 Key(KeyEvent { code: Esc, .. }) if search => (), // leave search mode
                 Key(KeyEvent { code: Enter, .. }) if search => {
-                    if !input_buf.is_empty() {
-                        last_search = input_buf.clone();
-                    }
-                    let y = start_line + if input_buf.is_empty() { 2 } else { 1 };
-                    let x = newlines.line2range(y).start;
-                    file.seek(std::io::SeekFrom::Start(x))?;
-                    let matcher = grep_regex::RegexMatcher::new(&last_search)?;
-                    let sink = grep_searcher::sinks::UTF8(|line, txt| {
-                        msgs = format!("found something: {} {}", line, txt);
-                        start_line = add(y - 1, line as usize - 1);
-                        Ok(false)
-                    });
-                    grep_searcher::Searcher::new().search_file(&matcher, &file, sink)?;
+                    do_search()?;
+                }
+                Key(KeyEvent {
+                    code: Char('n'),
+                    modifiers: KeyModifiers::NONE,
+                }) => {
+                    do_search()?;
                 }
                 Key(KeyEvent {
                     code: Char('/'), ..
                 }) => {
                     search = true;
                     continue;
+                }
+                Key(KeyEvent {
+                    code: Char('?'), ..
+                })
+                | Key(KeyEvent {
+                    code: Char('n'),
+                    modifiers: KeyModifiers::SHIFT,
+                }) => {
+                    msgs.clear();
+                    msgs.push_str("reverse search not implemented yet");
                 }
                 Key(KeyEvent {
                     code: Char(x @ '0'..='9'),
