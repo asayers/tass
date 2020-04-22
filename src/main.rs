@@ -1,6 +1,5 @@
 use crossterm::*;
 use memchr::memchr_iter;
-use memmap::Mmap;
 use ndarray::prelude::*;
 use ndarray_csv::Array2Reader;
 use pad::PadStr;
@@ -54,12 +53,42 @@ struct LineOffsets(Vec<usize>);
 impl LineOffsets {
     fn new(file: &File) -> anyhow::Result<LineOffsets> {
         eprint!("Gathering line breaks...");
-        let newlines = unsafe {
-            let mmap = Mmap::map(&file)?;
-            memchr_iter(b'\n', &mmap).collect::<Vec<_>>()
-        };
-        eprintln!(" done! ({} lines)", newlines.len());
+        let ts = std::time::Instant::now();
+        let newlines = LineOffsets::scan(file)?;
+        let d = ts.elapsed();
+        eprintln!(" done! (Scanned {} lines in {:?})", newlines.len(), d);
         Ok(LineOffsets(newlines))
+    }
+    #[cfg(memmap)]
+    fn scan(file: &File) -> anyhow::Result<Vec<usize>> {
+        unsafe {
+            use memmap::Mmap;
+            let mmap = Mmap::map(&file)?;
+            Ok(memchr_iter(b'\n', &mmap).collect::<Vec<_>>())
+        }
+    }
+    #[cfg(not(memmap))]
+    fn scan(file: &File) -> anyhow::Result<Vec<usize>> {
+        use std::io::{BufRead, BufReader};
+        let mut file = BufReader::new(file);
+        let mut offset = 0;
+        let mut newlines = vec![];
+        loop {
+            let buf = file.fill_buf()?;
+            if buf.is_empty() {
+                break;
+            }
+            if let Some(x) = memchr::memchr(b'\n', buf) {
+                newlines.push(offset + x);
+                offset += x + 1;
+                file.consume(x + 1);
+            } else {
+                let x = buf.len();
+                offset += x;
+                file.consume(x);
+            }
+        }
+        Ok(newlines)
     }
     /// Gives a byte-range which doesn't include the newline
     fn line2range(&self, line: usize) -> Range<u64> {

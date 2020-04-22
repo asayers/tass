@@ -12,7 +12,7 @@ anyhow = "1.0"
 crossterm = "0.17"
 csv = "1.1"
 memchr = "2.3"
-memmap = "0.7"
+memmap = { version = "0.7", optional = true }
 ndarray = "0.13"
 ndarray-csv = "0.4"
 pad = "0.1"
