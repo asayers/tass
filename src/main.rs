@@ -392,6 +392,7 @@ fn draw(
         .queue(style::Print(format!("│")))?
         .queue(style::SetAttribute(style::Attribute::Reset))?
         .queue(style::SetAttribute(style::Attribute::Underlined))?
+        .queue(style::SetAttribute(style::Attribute::Bold))?
         .queue(style::SetForegroundColor(style::Color::Yellow))?;
     for (field, w) in hdrs.iter().zip(&widths) {
         if *w > 0 {
