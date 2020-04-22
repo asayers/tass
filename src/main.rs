@@ -1,5 +1,4 @@
 use crossterm::*;
-use memchr::memchr_iter;
 use ndarray::prelude::*;
 use ndarray_csv::Array2Reader;
 use pad::PadStr;
@@ -59,15 +58,15 @@ impl LineOffsets {
         eprintln!(" done! (Scanned {} lines in {:?})", newlines.len(), d);
         Ok(LineOffsets(newlines))
     }
-    #[cfg(memmap)]
+    #[cfg(feature = "memmap")]
     fn scan(file: &File) -> anyhow::Result<Vec<usize>> {
         unsafe {
-            use memmap::Mmap;
-            let mmap = Mmap::map(&file)?;
-            Ok(memchr_iter(b'\n', &mmap).collect::<Vec<_>>())
+            eprint!(" creating mmap...");
+            let mmap = memmap::Mmap::map(&file)?;
+            Ok(memchr::memchr_iter(b'\n', &mmap).collect::<Vec<_>>())
         }
     }
-    #[cfg(not(memmap))]
+    #[cfg(not(feature = "memmap"))]
     fn scan(file: &File) -> anyhow::Result<Vec<usize>> {
         use std::io::{BufRead, BufReader};
         let mut file = BufReader::new(file);
