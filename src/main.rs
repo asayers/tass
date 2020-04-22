@@ -6,11 +6,12 @@ use std::cmp::min;
 use std::fs::File;
 use std::io::{Read, Seek, Write};
 use std::ops::Range;
+use std::path::{Path, PathBuf};
 use structopt::StructOpt;
 
 #[derive(StructOpt)]
 struct Opts {
-    path: std::path::PathBuf,
+    path: PathBuf,
 }
 
 fn main() {
@@ -50,16 +51,16 @@ fn take_range(file: &mut File, r: Range<u64>) -> std::io::Result<impl Read + '_>
 
 struct LineOffsets(Vec<usize>);
 impl LineOffsets {
-    fn new(file: &File) -> anyhow::Result<LineOffsets> {
+    fn new(path: &Path) -> anyhow::Result<LineOffsets> {
         eprint!("Gathering line breaks...");
         let ts = std::time::Instant::now();
-        let newlines = LineOffsets::scan(file)?;
+        let newlines = LineOffsets::scan(File::open(path)?)?;
         let d = ts.elapsed();
         eprintln!(" done! (Scanned {} lines in {:?})", newlines.len(), d);
         Ok(LineOffsets(newlines))
     }
     #[cfg(feature = "memmap")]
-    fn scan(file: &File) -> anyhow::Result<Vec<usize>> {
+    fn scan(file: File) -> anyhow::Result<Vec<usize>> {
         unsafe {
             eprint!(" creating mmap...");
             let mmap = memmap::Mmap::map(&file)?;
@@ -67,7 +68,7 @@ impl LineOffsets {
         }
     }
     #[cfg(not(feature = "memmap"))]
-    fn scan(file: &File) -> anyhow::Result<Vec<usize>> {
+    fn scan(file: File) -> anyhow::Result<Vec<usize>> {
         use std::io::{BufRead, BufReader};
         let mut file = BufReader::new(file);
         let mut offset = 0;
@@ -99,8 +100,9 @@ impl LineOffsets {
 }
 
 fn main_3(opts: Opts, stdout: &mut impl Write) -> anyhow::Result<()> {
+    let newlines = LineOffsets::new(&opts.path)?;
+
     let mut file = File::open(&opts.path)?;
-    let newlines = LineOffsets::new(&file)?;
     let hdrs = csv::Reader::from_reader(&mut file).headers()?.clone();
 
     let read_matrix =
