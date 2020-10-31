@@ -9,7 +9,7 @@ readme = "README.md"
 
 [dependencies]
 anyhow = "1.0"
-crossterm = "0.17"
+crossterm = "0.18"
 csv = "1.1"
 grep-matcher = "0.1"
 grep-regex = "0.1"
