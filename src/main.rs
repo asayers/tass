@@ -45,8 +45,7 @@ fn main_2(opts: Opts) -> anyhow::Result<()> {
 
     let newlines = LineOffsets::new(&mut file).context("generating offsets")?;
     match newlines.len() {
-        0 => bail!("No header row!"),
-        1 => bail!("No data!"), // FIXME
+        0 | 1 | 2 => bail!("Not enough data!"),
         _ => (),
     }
 
