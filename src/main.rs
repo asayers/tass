@@ -12,7 +12,7 @@ use structopt::StructOpt;
 
 #[derive(StructOpt)]
 struct Opts {
-    path: PathBuf,
+    path: Option<PathBuf>,
 }
 
 fn main() {
@@ -30,7 +30,19 @@ fn main() {
 }
 
 fn main_2(opts: Opts) -> anyhow::Result<()> {
-    let mut file = File::open(&opts.path)?;
+    let mut file = match opts.path {
+        Some(path) => File::open(&path)?,
+        None => {
+            let stdin = std::io::stdin();
+            let mut stdin = stdin.lock();
+            let mut file = tempfile::tempfile().context("creating tempfile")?;
+            let bytes = std::io::copy(&mut stdin, &mut file).context("filling tempfile")?;
+            eprintln!("copied {} bytes from stdin", bytes);
+            file.seek(SeekFrom::Start(0))?;
+            file
+        }
+    };
+
     let newlines = LineOffsets::new(&mut file).context("generating offsets")?;
     match newlines.len() {
         0 => bail!("No header row!"),
