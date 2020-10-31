@@ -115,7 +115,13 @@ impl LineOffsets {
     }
     /// Gives a byte-range which doesn't include the newline
     fn line2range(&self, line: usize) -> Range<u64> {
-        self.0[line] as u64 + 1..self.0[line + 1] as u64
+        let lhs = if line == 0 {
+            0
+        } else {
+            self.0[line - 1] as u64 + 1
+        };
+        let rhs = self.0[line] as u64;
+        lhs..rhs
     }
     fn len(&self) -> usize {
         self.0.len()
