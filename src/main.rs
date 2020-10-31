@@ -399,13 +399,16 @@ fn draw(
                     .max()
                     .unwrap()
             };
-            let x = min(budget, len + 2);
-            budget = budget.saturating_sub(len + 2);
+            let x = min(budget, len + PADDING_LEN + 1);
+            budget = budget.saturating_sub(len + PADDING_LEN + 1);
             x
         }))
         .collect::<Vec<_>>();
 
     stdout.queue(terminal::Clear(terminal::ClearType::All))?;
+
+    const SEPARATOR: &str = "│";
+    const PADDING_LEN: usize = 2;
 
     // Print the headers
     stdout
@@ -413,16 +416,17 @@ fn draw(
         .queue(style::SetAttribute(style::Attribute::Underlined))?
         .queue(style::SetAttribute(style::Attribute::Dim))?
         .queue(style::Print(" ".repeat(linnums_len - 1)))?
-        .queue(style::Print(format!("│")))?
+        .queue(style::Print("│"))?
         .queue(style::SetAttribute(style::Attribute::Reset))?
         .queue(style::SetAttribute(style::Attribute::Underlined))?
         .queue(style::SetAttribute(style::Attribute::Bold))?
         .queue(style::SetForegroundColor(style::Color::Yellow))?;
     for (field, w) in hdrs.iter().zip(&widths) {
-        if *w > 0 {
+        if *w >= PADDING_LEN {
             stdout
                 .queue(style::Print(" "))?
-                .queue(style::Print(field.with_exact_width(*w - 1)))?;
+                .queue(style::Print(field.with_exact_width(*w - PADDING_LEN)))?
+                .queue(style::Print(SEPARATOR))?;
         }
     }
     stdout.queue(style::ResetColor)?;
@@ -439,10 +443,13 @@ fn draw(
             )))?
             .queue(style::SetAttribute(style::Attribute::Reset))?;
         for (field, w) in row.iter().zip(&widths) {
-            if *w > 0 {
+            if *w >= PADDING_LEN {
                 stdout
                     .queue(style::Print(" "))?
-                    .queue(style::Print(field.with_exact_width(*w - 1)))?;
+                    .queue(style::Print(field.with_exact_width(*w - PADDING_LEN)))?
+                    .queue(style::SetAttribute(style::Attribute::Dim))?
+                    .queue(style::Print(SEPARATOR))?
+                    .queue(style::SetAttribute(style::Attribute::Reset))?;
             }
         }
     }
