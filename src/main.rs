@@ -37,7 +37,7 @@ fn main_2(opts: Opts) -> anyhow::Result<()> {
             let mut stdin = stdin.lock();
             let mut file = tempfile::tempfile().context("creating tempfile")?;
             let bytes = std::io::copy(&mut stdin, &mut file).context("filling tempfile")?;
-            eprintln!("copied {} bytes from stdin", bytes);
+            eprintln!("Copied {} KB from stdin", bytes / 1024);
             file.seek(SeekFrom::Start(0))?;
             file
         }
