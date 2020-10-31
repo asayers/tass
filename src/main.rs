@@ -4,9 +4,9 @@ use ndarray_csv::Array2Reader;
 use pad::PadStr;
 use std::cmp::min;
 use std::fs::File;
-use std::io::{Read, Seek, Write};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::ops::Range;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use structopt::StructOpt;
 
 #[derive(StructOpt)]
@@ -29,8 +29,8 @@ fn main() {
 }
 
 fn main_2(opts: Opts) -> anyhow::Result<()> {
-    let newlines = LineOffsets::new(&opts.path)?;
     let mut file = File::open(&opts.path)?;
+    let newlines = LineOffsets::new(&mut file)?;
 
     let stdout = std::io::stdout();
     let mut stdout = stdout.lock();
@@ -48,30 +48,31 @@ fn main_2(opts: Opts) -> anyhow::Result<()> {
 }
 
 fn take_range(file: &mut File, r: Range<u64>) -> std::io::Result<impl Read + '_> {
-    file.seek(std::io::SeekFrom::Start(r.start))?;
+    file.seek(SeekFrom::Start(r.start))?;
     Ok(file.take(r.end - r.start))
 }
 
 struct LineOffsets(Vec<usize>);
 impl LineOffsets {
-    fn new(path: &Path) -> anyhow::Result<LineOffsets> {
+    fn new(file: &mut File) -> anyhow::Result<LineOffsets> {
         eprint!("Gathering line breaks...");
         let ts = std::time::Instant::now();
-        let newlines = LineOffsets::scan(File::open(path)?)?;
+        let newlines = LineOffsets::scan(file)?;
         let d = ts.elapsed();
+        file.seek(SeekFrom::Start(0))?;
         eprintln!(" done! (Scanned {} lines in {:?})", newlines.len(), d);
         Ok(LineOffsets(newlines))
     }
     #[cfg(feature = "memmap")]
-    fn scan(file: File) -> anyhow::Result<Vec<usize>> {
+    fn scan(file: &mut File) -> anyhow::Result<Vec<usize>> {
         unsafe {
             eprint!(" creating mmap...");
-            let mmap = memmap::Mmap::map(&file)?;
+            let mmap = memmap::Mmap::map(file)?;
             Ok(memchr::memchr_iter(b'\n', &mmap).collect::<Vec<_>>())
         }
     }
     #[cfg(not(feature = "memmap"))]
-    fn scan(file: File) -> anyhow::Result<Vec<usize>> {
+    fn scan(file: &mut File) -> anyhow::Result<Vec<usize>> {
         use std::io::{BufRead, BufReader};
         let mut file = BufReader::new(file);
         let mut offset = 0;
@@ -174,7 +175,7 @@ fn main_3(newlines: LineOffsets, mut file: File, stdout: &mut impl Write) -> any
                 }
                 let y = start_line + if input_buf.is_empty() { 2 } else { 1 };
                 let x = newlines.line2range(y).start;
-                file.seek(std::io::SeekFrom::Start(x))?;
+                file.seek(SeekFrom::Start(x))?;
                 let matcher = grep_regex::RegexMatcher::new(&last_search)?;
                 msgs.clear();
                 msgs.push_str("No match");
