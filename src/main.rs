@@ -1,4 +1,4 @@
-use anyhow::Context;
+use anyhow::{bail, Context};
 use crossterm::*;
 use ndarray::prelude::*;
 use ndarray_csv::Array2Reader;
@@ -32,6 +32,11 @@ fn main() {
 fn main_2(opts: Opts) -> anyhow::Result<()> {
     let mut file = File::open(&opts.path)?;
     let newlines = LineOffsets::new(&mut file).context("generating offsets")?;
+    match newlines.len() {
+        0 => bail!("No header row!"),
+        1 => bail!("No data!"), // FIXME
+        _ => (),
+    }
 
     let stdout = std::io::stdout();
     let mut stdout = stdout.lock();
