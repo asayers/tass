@@ -122,6 +122,28 @@ impl LineOffsets {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::*;
+
+    #[test]
+    fn test() {
+        let mut f = tempfile().unwrap();
+        let s = b"foo,bar\n1,2\n3,4\n";
+        f.write_all(s).unwrap();
+        f.seek(SeekFrom::Start(0)).unwrap();
+        let lines = LineOffsets::new(&mut f).unwrap();
+        assert_eq!(lines.len(), 3);
+        // line2range never includes the newline char, hence the non-contiguous
+        // ranges
+        assert_eq!(lines.line2range(0), 0..7);
+        assert_eq!(lines.line2range(1), 8..11);
+        assert_eq!(lines.line2range(2), 12..15);
+        assert_eq!(s.len(), 16);
+    }
+}
+
 fn main_3(newlines: LineOffsets, mut file: File, stdout: &mut impl Write) -> anyhow::Result<()> {
     let hdrs = csv::Reader::from_reader(&mut file)
         .headers()
