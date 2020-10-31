@@ -29,6 +29,9 @@ fn main() {
 }
 
 fn main_2(opts: Opts) -> anyhow::Result<()> {
+    let newlines = LineOffsets::new(&opts.path)?;
+    let mut file = File::open(&opts.path)?;
+
     let stdout = std::io::stdout();
     let mut stdout = stdout.lock();
 
@@ -36,7 +39,7 @@ fn main_2(opts: Opts) -> anyhow::Result<()> {
     terminal::enable_raw_mode()?;
     stdout.queue(terminal::EnterAlternateScreen)?.flush()?;
 
-    main_3(opts, &mut stdout)?;
+    main_3(newlines, file, &mut stdout)?;
 
     // Clean up terminal
     stdout.queue(terminal::LeaveAlternateScreen)?.flush()?;
@@ -99,10 +102,7 @@ impl LineOffsets {
     }
 }
 
-fn main_3(opts: Opts, stdout: &mut impl Write) -> anyhow::Result<()> {
-    let newlines = LineOffsets::new(&opts.path)?;
-
-    let mut file = File::open(&opts.path)?;
+fn main_3(newlines: LineOffsets, mut file: File, stdout: &mut impl Write) -> anyhow::Result<()> {
     let hdrs = csv::Reader::from_reader(&mut file).headers()?.clone();
 
     let read_matrix =
