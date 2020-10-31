@@ -6,6 +6,7 @@ authors = ["Alex Sayers <alex@asayers.com>"]
 edition = "2018"
 license = "Unlicense"
 readme = "README.md"
+repository = "https://git.sr.ht/~asayers/tess"
 
 [dependencies]
 anyhow = "1.0"
