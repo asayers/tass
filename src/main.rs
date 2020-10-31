@@ -39,12 +39,13 @@ fn main_2(opts: Opts) -> anyhow::Result<()> {
     terminal::enable_raw_mode()?;
     stdout.queue(terminal::EnterAlternateScreen)?.flush()?;
 
-    main_3(newlines, file, &mut stdout)?;
+    // Store the result so the cleanup happens even if there's an error
+    let result = main_3(newlines, file, &mut stdout);
 
     // Clean up terminal
     stdout.queue(terminal::LeaveAlternateScreen)?.flush()?;
     terminal::disable_raw_mode()?;
-    Ok(())
+    result
 }
 
 fn take_range(file: &mut File, r: Range<u64>) -> std::io::Result<impl Read + '_> {
