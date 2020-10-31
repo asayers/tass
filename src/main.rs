@@ -1,3 +1,4 @@
+use anyhow::Context;
 use crossterm::*;
 use ndarray::prelude::*;
 use ndarray_csv::Array2Reader;
@@ -30,13 +31,13 @@ fn main() {
 
 fn main_2(opts: Opts) -> anyhow::Result<()> {
     let mut file = File::open(&opts.path)?;
-    let newlines = LineOffsets::new(&mut file)?;
+    let newlines = LineOffsets::new(&mut file).context("generating offsets")?;
 
     let stdout = std::io::stdout();
     let mut stdout = stdout.lock();
 
     // Set up terminal
-    terminal::enable_raw_mode()?;
+    terminal::enable_raw_mode().context("entering raw mode")?;
     stdout.queue(terminal::EnterAlternateScreen)?.flush()?;
 
     // Store the result so the cleanup happens even if there's an error
@@ -105,7 +106,10 @@ impl LineOffsets {
 }
 
 fn main_3(newlines: LineOffsets, mut file: File, stdout: &mut impl Write) -> anyhow::Result<()> {
-    let hdrs = csv::Reader::from_reader(&mut file).headers()?.clone();
+    let hdrs = csv::Reader::from_reader(&mut file)
+        .headers()
+        .context("reading headers")?
+        .clone();
 
     let read_matrix =
         |file: &mut File, start_line: usize, end_line: usize| -> anyhow::Result<Array2<String>> {
@@ -126,7 +130,7 @@ fn main_3(newlines: LineOffsets, mut file: File, stdout: &mut impl Write) -> any
     let mut exclude = vec![];
     loop {
         let end_line = min(newlines.len() - 2, start_line + rows as usize - 2);
-        let matrix = read_matrix(&mut file, start_line, end_line)?;
+        let matrix = read_matrix(&mut file, start_line, end_line).context("read matrix")?;
 
         draw(
             stdout,
