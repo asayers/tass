@@ -5,7 +5,7 @@ use ndarray_csv::Array2Reader;
 use pad::PadStr;
 use std::cmp::min;
 use std::fs::File;
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 use structopt::StructOpt;
@@ -38,8 +38,16 @@ fn main_2(opts: Opts) -> anyhow::Result<()> {
             let path = file.path().to_owned();
             std::thread::spawn(move || {
                 let stdin = std::io::stdin();
-                let mut stdin = stdin.lock();
-                let bytes = std::io::copy(&mut stdin, &mut file).context("filling tempfile")?;
+                let stdin = BufReader::new(stdin.lock());
+                // Try to push a whole line atomically - otherwise the main
+                // thread may see a line with the wrong number of columns.
+                for line in stdin.lines() {
+                    let mut line = line.unwrap();
+                    line.push('\n');
+                    file.write_all(line.as_bytes())
+                        .context("filling tempfile")
+                        .unwrap();
+                }
             });
             path
         }
