@@ -34,12 +34,14 @@ fn main_2(opts: Opts) -> anyhow::Result<()> {
     let path = match opts.path {
         Some(path) => path,
         None => {
-            let stdin = std::io::stdin();
-            let mut stdin = stdin.lock();
             let mut file = NamedTempFile::new().context("creating tempfile")?;
-            let bytes = std::io::copy(&mut stdin, &mut file).context("filling tempfile")?;
-            eprintln!("Copied {} KB from stdin", bytes / 1024);
-            file.path().to_owned()
+            let path = file.path().to_owned();
+            std::thread::spawn(move || {
+                let stdin = std::io::stdin();
+                let mut stdin = stdin.lock();
+                let bytes = std::io::copy(&mut stdin, &mut file).context("filling tempfile")?;
+            });
+            path
         }
     };
 
