@@ -80,51 +80,51 @@ fn take_range(file: &mut File, r: Range<u64>) -> std::io::Result<impl Read + '_>
     Ok(file.take(r.end - r.start))
 }
 
-struct LineOffsets(Vec<usize>);
+struct LineOffsets {
+    offset: u64,
+    newlines: Vec<u64>,
+    file: BufReader<File>,
+}
 impl LineOffsets {
     fn new(path: &Path) -> anyhow::Result<LineOffsets> {
-        eprint!("Gathering line breaks...");
-        let ts = std::time::Instant::now();
-        let file = File::open(path)?;
-        let newlines = LineOffsets::scan(file)?;
-        let d = ts.elapsed();
-        eprintln!(" done! (Scanned {} lines in {:?})", newlines.len(), d);
-        Ok(LineOffsets(newlines))
+        let mut ret = LineOffsets {
+            offset: 0,
+            file: BufReader::new(File::open(path)?),
+            newlines: vec![],
+        };
+        ret.update()?;
+        Ok(ret)
     }
-    fn scan(file: &mut File) -> anyhow::Result<Vec<usize>> {
-        use std::io::{BufRead, BufReader};
-        let mut file = BufReader::new(file);
-        let mut offset = 0;
-        let mut newlines = vec![];
+    fn update(&mut self) -> anyhow::Result<()> {
         loop {
-            let buf = file.fill_buf()?;
+            let buf = self.file.fill_buf()?;
             if buf.is_empty() {
                 break;
             }
             if let Some(x) = memchr::memchr(b'\n', buf) {
-                newlines.push(offset + x);
-                offset += x + 1;
-                file.consume(x + 1);
+                self.newlines.push(self.offset + x as u64);
+                self.offset += x as u64 + 1;
+                self.file.consume(x + 1);
             } else {
                 let x = buf.len();
-                offset += x;
-                file.consume(x);
+                self.offset += x as u64;
+                self.file.consume(x);
             }
         }
-        Ok(newlines)
+        Ok(())
     }
     /// Gives a byte-range which doesn't include the newline
     fn line2range(&self, line: usize) -> Range<u64> {
         let lhs = if line == 0 {
             0
         } else {
-            self.0[line - 1] as u64 + 1
+            self.newlines[line - 1] as u64 + 1
         };
-        let rhs = self.0[line] as u64;
+        let rhs = self.newlines[line] as u64;
         lhs..rhs
     }
     fn len(&self) -> usize {
-        self.0.len()
+        self.newlines.len()
     }
 }
 
