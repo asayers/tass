@@ -7,8 +7,9 @@ use std::cmp::min;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::ops::Range;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use structopt::StructOpt;
+use tempfile::*;
 
 #[derive(StructOpt)]
 struct Opts {
@@ -30,20 +31,19 @@ fn main() {
 }
 
 fn main_2(opts: Opts) -> anyhow::Result<()> {
-    let mut file = match opts.path {
-        Some(path) => File::open(&path)?,
+    let path = match opts.path {
+        Some(path) => path,
         None => {
             let stdin = std::io::stdin();
             let mut stdin = stdin.lock();
-            let mut file = tempfile::tempfile().context("creating tempfile")?;
+            let mut file = NamedTempFile::new().context("creating tempfile")?;
             let bytes = std::io::copy(&mut stdin, &mut file).context("filling tempfile")?;
             eprintln!("Copied {} KB from stdin", bytes / 1024);
-            file.seek(SeekFrom::Start(0))?;
-            file
+            file.path().to_owned()
         }
     };
 
-    let newlines = LineOffsets::new(&mut file).context("generating offsets")?;
+    let newlines = LineOffsets::new(&path).context("generating offsets")?;
     match newlines.len() {
         0 | 1 | 2 => bail!("Not enough data!"),
         _ => (),
@@ -57,7 +57,7 @@ fn main_2(opts: Opts) -> anyhow::Result<()> {
     stdout.queue(terminal::EnterAlternateScreen)?.flush()?;
 
     // Store the result so the cleanup happens even if there's an error
-    let result = main_3(newlines, file, &mut stdout);
+    let result = main_3(newlines, &path, &mut stdout);
 
     // Clean up terminal
     stdout.queue(terminal::LeaveAlternateScreen)?.flush()?;
@@ -72,12 +72,12 @@ fn take_range(file: &mut File, r: Range<u64>) -> std::io::Result<impl Read + '_>
 
 struct LineOffsets(Vec<usize>);
 impl LineOffsets {
-    fn new(file: &mut File) -> anyhow::Result<LineOffsets> {
+    fn new(path: &Path) -> anyhow::Result<LineOffsets> {
         eprint!("Gathering line breaks...");
         let ts = std::time::Instant::now();
+        let file = File::open(path)?;
         let newlines = LineOffsets::scan(file)?;
         let d = ts.elapsed();
-        file.seek(SeekFrom::Start(0))?;
         eprintln!(" done! (Scanned {} lines in {:?})", newlines.len(), d);
         Ok(LineOffsets(newlines))
     }
@@ -121,15 +121,13 @@ impl LineOffsets {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::*;
 
     #[test]
     fn test() {
-        let mut f = tempfile().unwrap();
+        let mut f = NamedTempFile::new().unwrap();
         let s = b"foo,bar\n1,2\n3,4\n";
         f.write_all(s).unwrap();
-        f.seek(SeekFrom::Start(0)).unwrap();
-        let lines = LineOffsets::new(&mut f).unwrap();
+        let lines = LineOffsets::new(f.path()).unwrap();
         assert_eq!(lines.len(), 3);
         // line2range never includes the newline char, hence the non-contiguous
         // ranges
@@ -140,7 +138,8 @@ mod tests {
     }
 }
 
-fn main_3(newlines: LineOffsets, mut file: File, stdout: &mut impl Write) -> anyhow::Result<()> {
+fn main_3(newlines: LineOffsets, path: &Path, stdout: &mut impl Write) -> anyhow::Result<()> {
+    let mut file = File::open(path)?;
     let hdrs = csv::Reader::from_reader(&mut file)
         .headers()
         .context("reading headers")?
