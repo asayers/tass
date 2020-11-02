@@ -726,7 +726,6 @@ dependencies = [
  "grep-regex",
  "grep-searcher",
  "memchr",
- "memmap",
  "ndarray",
  "ndarray-csv",
  "pad",

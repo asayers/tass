@@ -81,15 +81,6 @@ impl LineOffsets {
         eprintln!(" done! (Scanned {} lines in {:?})", newlines.len(), d);
         Ok(LineOffsets(newlines))
     }
-    #[cfg(feature = "memmap")]
-    fn scan(file: &mut File) -> anyhow::Result<Vec<usize>> {
-        unsafe {
-            eprint!(" creating mmap...");
-            let mmap = memmap::Mmap::map(file)?;
-            Ok(memchr::memchr_iter(b'\n', &mmap).collect::<Vec<_>>())
-        }
-    }
-    #[cfg(not(feature = "memmap"))]
     fn scan(file: &mut File) -> anyhow::Result<Vec<usize>> {
         use std::io::{BufRead, BufReader};
         let mut file = BufReader::new(file);
