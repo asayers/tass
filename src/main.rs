@@ -1,4 +1,4 @@
-use anyhow::{bail, Context};
+use anyhow::Context;
 use crossterm::*;
 use ndarray::prelude::*;
 use ndarray_csv::Array2Reader;
@@ -53,10 +53,18 @@ fn main_2(opts: Opts) -> anyhow::Result<()> {
         }
     };
 
-    let newlines = LineOffsets::new(&path).context("generating offsets")?;
-    match newlines.len() {
-        0 | 1 | 2 => bail!("Not enough data!"),
-        _ => (),
+    let mut newlines = LineOffsets::new(&path).context("generating offsets")?;
+    let n = newlines.len();
+    const MIN_LINES: usize = 3;
+    if n < MIN_LINES {
+        eprintln!(
+            "Insufficient lines (saw {} but need at least {}).  Waiting for more data...",
+            n, MIN_LINES
+        );
+        while newlines.len() < MIN_LINES {
+            newlines.update()?;
+            std::thread::sleep(Duration::from_millis(500));
+        }
     }
 
     let stdout = std::io::stdout();
