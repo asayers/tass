@@ -65,7 +65,7 @@ fn main_2(opts: Opts) -> anyhow::Result<()> {
     stdout.queue(terminal::EnterAlternateScreen)?.flush()?;
 
     // Store the result so the cleanup happens even if there's an error
-    let result = main_3(df, opts.follow, &mut stdout);
+    let result = main_3(df, &mut stdout);
 
     // Clean up terminal
     stdout.queue(terminal::LeaveAlternateScreen)?.flush()?;
@@ -73,7 +73,7 @@ fn main_2(opts: Opts) -> anyhow::Result<()> {
     result
 }
 
-fn main_3(mut df: DataFrame, start_in_follow: bool, stdout: &mut impl Write) -> anyhow::Result<()> {
+fn main_3(mut df: DataFrame, stdout: &mut impl Write) -> anyhow::Result<()> {
     let (mut cols, mut rows) = terminal::size()?;
     let mut start_line = 0usize;
     let mut start_col = 0usize;
@@ -81,6 +81,15 @@ fn main_3(mut df: DataFrame, start_in_follow: bool, stdout: &mut impl Write) -> 
     let mut last_search = String::new();
     let mut exclude = vec![];
     let mut drawer = GridDrawer::default();
+
+    #[derive(Clone, Copy, PartialEq)]
+    enum Mode {
+        Jump,
+        Search,
+        Exclude,
+    }
+    let mut input_buf = String::new();
+    let mut mode = Mode::Jump;
 
     loop {
         let end_line = min(df.len() - 2, start_line + rows as usize - 2);
@@ -97,215 +106,121 @@ fn main_3(mut df: DataFrame, start_in_follow: bool, stdout: &mut impl Write) -> 
             &exclude,
         )?;
 
-        #[derive(Clone, Copy)]
-        enum Mode {
-            Jump,
-            Search,
-            Exclude,
-        }
-        let mut input_buf = String::new();
-        let mut mode = Mode::Jump;
-        loop {
-            let prompt = match mode {
-                Mode::Jump => ":",
-                Mode::Search => "/",
-                Mode::Exclude => "-",
-            };
-            stdout
-                .queue(cursor::MoveTo(0, rows))?
-                .queue(terminal::Clear(terminal::ClearType::CurrentLine))?
-                .queue(style::Print(&prompt))?
-                .queue(style::Print(&input_buf))?
-                .queue(cursor::MoveTo(cols - msgs.len() as u16, rows))?
-                .queue(style::SetForegroundColor(style::Color::Blue))?
-                .queue(style::Print(&msgs.trim()))?
-                .queue(style::ResetColor)?
-                .queue(cursor::MoveTo(
-                    (prompt.len() + input_buf.len()) as u16,
-                    rows,
-                ))?;
-            stdout.flush()?;
+        let position = format!("{}-{} of {}", start_line + 1, end_line, df.len() - 2);
+        let prompt = match mode {
+            Mode::Jump => ": ",
+            Mode::Search => "/ ",
+            Mode::Exclude => "- ",
+        };
+        stdout
+            .queue(cursor::MoveTo(0, rows))?
+            .queue(terminal::Clear(terminal::ClearType::CurrentLine))?
+            .queue(style::Print(&position))?
+            .queue(style::Print(&prompt))?
+            .queue(style::Print(&input_buf))?
+            .queue(cursor::MoveTo(cols - msgs.len() as u16, rows))?
+            .queue(style::SetForegroundColor(style::Color::Blue))?
+            .queue(style::Print(&msgs.trim()))?
+            .queue(style::ResetColor)?
+            .queue(cursor::MoveTo(
+                (position.len() + prompt.len() + input_buf.len()) as u16,
+                rows,
+            ))?;
+        stdout.flush()?;
 
-            let max_line = newlines.len() - 2;
-            let add = |start_line: usize, x: usize| min(max_line, start_line.saturating_add(x));
-            let mut do_search = || {
-                if !input_buf.is_empty() {
-                    last_search = input_buf.clone();
-                }
-                let y = start_line + if input_buf.is_empty() { 2 } else { 1 };
-                let x = newlines.line2range(y).start;
-                file.seek(SeekFrom::Start(x))?;
-                let matcher = grep_regex::RegexMatcher::new(&last_search)?;
-                msgs.clear();
-                msgs.push_str("No match");
-                let sink = grep_searcher::sinks::UTF8(|line, _| {
-                    msgs.clear();
-                    start_line = add(y - 1, line as usize - 1);
-                    Ok(false)
-                });
-                grep_searcher::Searcher::new().search_file(&matcher, &file, sink)?;
-                anyhow::Result::<_>::Ok(())
-            };
-            use crossterm::event::{Event::*, KeyCode::*, KeyEvent, KeyModifiers};
-            match (mode, event::read()?) {
-                (
-                    _,
-                    Key(KeyEvent {
-                        code: Backspace, ..
-                    }),
-                ) => {
-                    if !input_buf.is_empty() {
-                        input_buf.pop();
-                        continue;
-                    }
-                }
-                (
-                    Mode::Jump,
-                    Key(KeyEvent {
-                        code: Char('-'), ..
-                    }),
-                ) => {
-                    mode = Mode::Exclude;
-                    continue;
-                }
-                (Mode::Exclude, Key(KeyEvent { code: Char(x), .. })) => {
-                    input_buf.push(x);
-                    continue; // Don't redraw
-                }
-                (Mode::Exclude, Key(KeyEvent { code: Enter, .. })) => {
-                    exclude.push(input_buf.clone());
-                }
-                (Mode::Search, Key(KeyEvent { code: Char(x), .. })) => {
-                    input_buf.push(x);
-                    continue; // Don't redraw
-                }
-                (Mode::Search, Key(KeyEvent { code: Esc, .. })) => (), // leave search mode
-                (Mode::Search, Key(KeyEvent { code: Enter, .. })) => {
-                    do_search()?;
-                }
-                (
-                    Mode::Jump,
-                    Key(KeyEvent {
-                        code: Char('n'),
-                        modifiers: KeyModifiers::NONE,
-                    }),
-                ) => {
-                    do_search()?;
-                }
-                (
-                    Mode::Jump,
-                    Key(KeyEvent {
-                        code: Char('/'), ..
-                    }),
-                ) => {
-                    mode = Mode::Search;
-                    continue;
-                }
-                (
-                    Mode::Jump,
-                    Key(KeyEvent {
-                        code: Char('?'), ..
-                    }),
-                ) => {
-                    msgs.clear();
-                    msgs.push_str("reverse search not implemented yet");
-                }
-                (
-                    Mode::Jump,
-                    Key(KeyEvent {
-                        code: Char('n'),
-                        modifiers: KeyModifiers::SHIFT,
-                    }),
-                ) => {
-                    msgs.clear();
-                    msgs.push_str("reverse search not implemented yet");
-                }
-                (
-                    Mode::Jump,
-                    Key(KeyEvent {
-                        code: Char(x @ '0'..='9'),
-                        ..
-                    }),
-                ) => {
-                    input_buf.push(x);
-                    continue; // Don't redraw
-                }
-                (
-                    Mode::Jump,
-                    Key(KeyEvent {
-                        code: Char('g'), ..
-                    }),
-                )
-                | (
-                    Mode::Jump,
-                    Key(KeyEvent {
-                        code: Char('G'), ..
-                    }),
-                )
-                | (Mode::Jump, Key(KeyEvent { code: Enter, .. })) => {
-                    match input_buf.parse::<usize>() {
-                        Err(_) => (),
-                        Ok(0) => start_line = 0,
-                        Ok(x) => start_line = min(max_line, x - 1),
-                    }
-                }
-                (Mode::Jump, Key(KeyEvent { code: Esc, .. }))
-                | (
-                    Mode::Jump,
-                    Key(KeyEvent {
-                        code: Char('c'),
-                        modifiers: KeyModifiers::CONTROL,
-                    }),
-                )
-                | (
-                    Mode::Jump,
-                    Key(KeyEvent {
-                        code: Char('q'), ..
-                    }),
-                ) => return Ok(()),
-                (Mode::Jump, Key(KeyEvent { code: Down, .. }))
-                | (
-                    Mode::Jump,
-                    Key(KeyEvent {
-                        code: Char('j'), ..
-                    }),
-                ) => start_line = add(start_line, 1),
-                (Mode::Jump, Key(KeyEvent { code: Up, .. }))
-                | (
-                    Mode::Jump,
-                    Key(KeyEvent {
-                        code: Char('k'), ..
-                    }),
-                ) => start_line = start_line.saturating_sub(1),
-                (Mode::Jump, Key(KeyEvent { code: PageDown, .. })) => {
-                    start_line = add(start_line, rows as usize - 2)
-                }
-                (Mode::Jump, Key(KeyEvent { code: PageUp, .. })) => {
-                    start_line = start_line.saturating_sub(rows as usize - 2)
-                }
-                (Mode::Jump, Key(KeyEvent { code: Home, .. })) => start_line = 0,
-                (Mode::Jump, Key(KeyEvent { code: End, .. })) => start_line = max_line,
-                (Mode::Jump, Key(KeyEvent { code: Right, .. }))
-                | (
-                    Mode::Jump,
-                    Key(KeyEvent {
-                        code: Char('l'), ..
-                    }),
-                ) => start_col += 1,
-                (Mode::Jump, Key(KeyEvent { code: Left, .. }))
-                | (
-                    Mode::Jump,
-                    Key(KeyEvent {
-                        code: Char('h'), ..
-                    }),
-                ) => start_col = start_col.saturating_sub(1),
-                (_, Resize(c, r)) => {
-                    cols = c;
-                    rows = r
-                }
-                _ => continue, // Don't redraw
+        // TODO: Get a prompt notification of file change, don't poll
+        if !event::poll(Duration::from_millis(100))? {
+            df.refresh()?;
+            continue;
+        }
+
+        // We have user input; let's handle it
+
+        msgs.clear();
+        let max_line = df.len() - 2;
+        let add = |start_line: usize, x: usize| min(max_line, start_line.saturating_add(x));
+        let key = match event::read()? {
+            Key(k) => k,
+            Resize(c, r) => {
+                cols = c;
+                rows = r;
+                continue;
             }
-            break;
+            Mouse(_) => continue,
+        };
+        use crossterm::event::{Event::*, KeyCode::*, KeyModifiers};
+        use Mode::*;
+        match (mode, key.code) {
+            // Exiting the program
+            (Jump, Esc) | (Jump, Char('q')) => return Ok(()),
+            (_, Char('c')) if key.modifiers == KeyModifiers::CONTROL => return Ok(()),
+
+            // Typing at the prompt (search/exclude modes)
+            (Search, Char(x)) | (Exclude, Char(x)) => input_buf.push(x),
+            (Search, Backspace) | (Exclude, Backspace) => {
+                if input_buf.is_empty() {
+                    mode = Mode::Jump
+                } else {
+                    input_buf.pop();
+                }
+            }
+            (Search, Esc) | (Exclude, Esc) => {
+                input_buf.clear();
+                mode = Jump;
+            }
+
+            // Exclude mode
+            (Jump, Char('-')) => mode = Exclude,
+            (Exclude, Enter) => {
+                exclude.push(input_buf.clone());
+                input_buf.clear();
+                mode = Jump;
+            }
+
+            // Search mode
+            (Jump, Char('/')) => mode = Search,
+            (Search, Enter) => {
+                std::mem::swap(&mut last_search, &mut input_buf);
+                input_buf.clear();
+                mode = Jump;
+                match df.search(start_line + 1, &last_search)? {
+                    Some(line) => start_line = line,
+                    None => msgs.push_str("No match"),
+                }
+            }
+            (Jump, Char('n')) => match df.search(start_line + 2, &last_search)? {
+                Some(line) => start_line = line,
+                None => msgs.push_str("No match"),
+            },
+
+            (Jump, Char('?')) => msgs.push_str("reverse search not implemented yet"),
+            (Jump, Char('N')) => msgs.push_str("reverse search not implemented yet"),
+
+            (Jump, Char(x @ '0'..='9')) => input_buf.push(x),
+            (Jump, Char('g')) | (Jump, Char('G')) | (Jump, Enter) => {
+                match input_buf.parse::<usize>() {
+                    Err(_) => (),
+                    Ok(0) => start_line = 0,
+                    Ok(x) => start_line = min(max_line, x - 1),
+                }
+                input_buf.clear();
+            }
+
+            // Scrolling the grid
+            (Jump, Down) | (Jump, Char('j')) => start_line = add(start_line, 1),
+            (Jump, Up) | (Jump, Char('k')) => start_line = start_line.saturating_sub(1),
+            (Jump, PageDown) => start_line = add(start_line, rows as usize - 2),
+            (Jump, PageUp) => start_line = start_line.saturating_sub(rows as usize - 2),
+            (Jump, Home) => start_line = 0,
+            (Jump, End) => start_line = max_line,
+            (Jump, Right) | (Jump, Char('l')) => {
+                start_col += 1
+            }
+            (Jump, Left) | (Jump, Char('h')) => {
+                start_col = start_col.saturating_sub(1)
+            }
+
+            _ => (),
         }
     }
 }
