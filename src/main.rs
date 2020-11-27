@@ -1,8 +1,10 @@
+mod grid;
+
+use crate::grid::*;
 use anyhow::Context;
 use crossterm::*;
 use ndarray::prelude::*;
 use ndarray_csv::Array2Reader;
-use pad::PadStr;
 use std::cmp::min;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
@@ -180,18 +182,22 @@ fn main_3(newlines: LineOffsets, path: &Path, stdout: &mut impl Write) -> anyhow
     let mut msgs = String::new();
     let mut last_search = String::new();
     let mut exclude = vec![];
+    let mut drawer = GridDrawer::default();
+
     loop {
         let end_line = min(newlines.len() - 2, start_line + rows as usize - 2);
         let matrix = read_matrix(&mut file, start_line, end_line).context("read matrix")?;
 
-        draw(
+        drawer.draw(
             stdout,
-            rows as usize,
-            cols as usize,
-            start_line,
-            start_col,
-            &hdrs,
-            &matrix,
+            &mut df,
+            DrawParams {
+                rows: rows as usize,
+                cols: cols as usize,
+                start_line,
+                end_line,
+                start_col,
+            },
             &exclude,
         )?;
 
@@ -406,96 +412,4 @@ fn main_3(newlines: LineOffsets, path: &Path, stdout: &mut impl Write) -> anyhow
             break;
         }
     }
-}
-
-fn draw(
-    stdout: &mut impl Write,
-    rows: usize,
-    cols: usize,
-    start_line: usize,
-    start_col: usize,
-    hdrs: &csv::StringRecord,
-    matrix: &Array2<String>,
-    exclude: &[String],
-) -> anyhow::Result<()> {
-    // Compute the widths
-    let end_line = start_line + matrix.len_of(Axis(0)) - 1;
-    let linnums_len = end_line.to_string().len() + 1;
-    let mut budget = cols - linnums_len;
-    let widths = std::iter::repeat(0)
-        .take(start_col)
-        .chain(hdrs.iter().enumerate().skip(start_col).map(|(i, hdr)| {
-            let len = if exclude.iter().any(|x| x == hdr) {
-                hdr.len()
-            } else {
-                std::iter::once(hdr)
-                    .chain(matrix.column(i).into_iter().map(|x| x.as_str()))
-                    .map(|x| x.len())
-                    .max()
-                    .unwrap()
-            };
-            let x = min(budget, len + PADDING_LEN + 1);
-            budget = budget.saturating_sub(len + PADDING_LEN + 1);
-            x
-        }))
-        .collect::<Vec<_>>();
-
-    stdout.queue(terminal::Clear(terminal::ClearType::All))?;
-
-    const SEPARATOR: &str = "│";
-    const PADDING_LEN: usize = 2;
-
-    // Print the headers
-    stdout
-        .queue(cursor::MoveTo(0, 0))?
-        .queue(style::SetAttribute(style::Attribute::Underlined))?
-        .queue(style::SetAttribute(style::Attribute::Dim))?
-        .queue(style::Print(" ".repeat(linnums_len - 1)))?
-        .queue(style::Print("│"))?
-        .queue(style::SetAttribute(style::Attribute::Reset))?
-        .queue(style::SetAttribute(style::Attribute::Underlined))?
-        .queue(style::SetAttribute(style::Attribute::Bold))?
-        .queue(style::SetForegroundColor(style::Color::Yellow))?;
-    for (field, w) in hdrs.iter().zip(&widths) {
-        if *w >= PADDING_LEN {
-            stdout
-                .queue(style::Print(" "))?
-                .queue(style::Print(field.with_exact_width(*w - PADDING_LEN)))?
-                .queue(style::Print(SEPARATOR))?;
-        }
-    }
-    stdout.queue(style::ResetColor)?;
-
-    // Print the body
-    for (i, row) in matrix.outer_iter().enumerate() {
-        stdout
-            .queue(cursor::MoveToNextLine(1))?
-            .queue(style::SetAttribute(style::Attribute::Dim))?
-            .queue(style::Print(format!(
-                "{:>w$}│",
-                i + start_line + 1,
-                w = linnums_len - 1
-            )))?
-            .queue(style::SetAttribute(style::Attribute::Reset))?;
-        for (field, w) in row.iter().zip(&widths) {
-            if *w >= PADDING_LEN {
-                stdout
-                    .queue(style::Print(" "))?
-                    .queue(style::Print(field.with_exact_width(*w - PADDING_LEN)))?
-                    .queue(style::SetAttribute(style::Attribute::Dim))?
-                    .queue(style::Print(SEPARATOR))?
-                    .queue(style::SetAttribute(style::Attribute::Reset))?;
-            }
-        }
-    }
-
-    stdout.queue(style::SetForegroundColor(style::Color::Blue))?;
-    for _ in 0..rows.saturating_sub(matrix.len_of(Axis(0))) {
-        stdout
-            .queue(cursor::MoveToNextLine(1))?
-            .queue(style::Print("~"))?;
-    }
-    stdout.queue(style::ResetColor)?;
-
-    Ok(())
 }
