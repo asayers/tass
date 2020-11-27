@@ -3,7 +3,8 @@ mod grid;
 
 use crate::dataframe::*;
 use crate::grid::*;
-use anyhow::Context;
+use anyhow::{bail, Context};
+use crossterm::tty::IsTty;
 use crossterm::*;
 use std::cmp::{max, min};
 use std::io::{BufRead, BufReader, Write};
@@ -39,10 +40,13 @@ fn main_2(opts: Opts) -> anyhow::Result<()> {
     let path: Box<dyn AsRef<Path>> = match opts.path {
         Some(path) => Box::new(path),
         None => {
+            let stdin = std::io::stdin();
+            if stdin.is_tty() {
+                bail!("Need to specify a filename or feed data to stdin");
+            }
             let tempfile = NamedTempFile::new().context("creating tempfile")?;
             let (mut file, path) = tempfile.into_parts();
             std::thread::spawn(move || {
-                let stdin = std::io::stdin();
                 let stdin = BufReader::new(stdin.lock());
                 // Try to push a whole line atomically - otherwise the main
                 // thread may see a line with the wrong number of columns.
