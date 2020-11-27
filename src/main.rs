@@ -36,11 +36,11 @@ fn main() {
 }
 
 fn main_2(opts: Opts) -> anyhow::Result<()> {
-    let path = match opts.path {
-        Some(path) => path,
+    let path: Box<dyn AsRef<Path>> = match opts.path {
+        Some(path) => Box::new(path),
         None => {
-            let mut file = NamedTempFile::new().context("creating tempfile")?;
-            let path = file.path().to_owned();
+            let tempfile = NamedTempFile::new().context("creating tempfile")?;
+            let (mut file, path) = tempfile.into_parts();
             std::thread::spawn(move || {
                 let stdin = std::io::stdin();
                 let stdin = BufReader::new(stdin.lock());
@@ -54,7 +54,7 @@ fn main_2(opts: Opts) -> anyhow::Result<()> {
                         .unwrap();
                 }
             });
-            path
+            Box::new(path)
         }
     };
 
@@ -69,6 +69,9 @@ fn main_2(opts: Opts) -> anyhow::Result<()> {
 
     // Store the result so the cleanup happens even if there's an error
     let result = main_3(df, opts.follow, &mut stdout);
+
+    // Delete the tempfile (if reading from stdin)
+    std::mem::drop(path);
 
     // Clean up terminal
     stdout.queue(terminal::LeaveAlternateScreen)?.flush()?;
