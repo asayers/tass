@@ -1,15 +1,14 @@
+mod dataframe;
 mod grid;
 
+use crate::dataframe::*;
 use crate::grid::*;
 use anyhow::Context;
 use crossterm::*;
-use ndarray::prelude::*;
-use ndarray_csv::Array2Reader;
-use std::cmp::min;
-use std::fs::File;
-use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
-use std::ops::Range;
+use std::cmp::{max, min};
+use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 use structopt::StructOpt;
 use tempfile::*;
 
@@ -56,19 +55,7 @@ fn main_2(opts: Opts) -> anyhow::Result<()> {
         }
     };
 
-    let mut newlines = LineOffsets::new(&path).context("generating offsets")?;
-    let n = newlines.len();
-    const MIN_LINES: usize = 3;
-    if n < MIN_LINES {
-        eprintln!(
-            "Insufficient lines (saw {} but need at least {}).  Waiting for more data...",
-            n, MIN_LINES
-        );
-        while newlines.len() < MIN_LINES {
-            newlines.update()?;
-            std::thread::sleep(Duration::from_millis(500));
-        }
-    }
+    let df = DataFrame::new(path.as_ref().as_ref()).context("loading dataframe")?;
 
     let stdout = std::io::stdout();
     let mut stdout = stdout.lock();
@@ -78,7 +65,7 @@ fn main_2(opts: Opts) -> anyhow::Result<()> {
     stdout.queue(terminal::EnterAlternateScreen)?.flush()?;
 
     // Store the result so the cleanup happens even if there's an error
-    let result = main_3(newlines, &path, &mut stdout);
+    let result = main_3(df, opts.follow, &mut stdout);
 
     // Clean up terminal
     stdout.queue(terminal::LeaveAlternateScreen)?.flush()?;
@@ -86,97 +73,7 @@ fn main_2(opts: Opts) -> anyhow::Result<()> {
     result
 }
 
-fn take_range(file: &mut File, r: Range<u64>) -> std::io::Result<impl Read + '_> {
-    file.seek(SeekFrom::Start(r.start))?;
-    Ok(file.take(r.end - r.start))
-}
-
-struct LineOffsets {
-    offset: u64,
-    newlines: Vec<u64>,
-    file: BufReader<File>,
-}
-impl LineOffsets {
-    fn new(path: &Path) -> anyhow::Result<LineOffsets> {
-        let mut ret = LineOffsets {
-            offset: 0,
-            file: BufReader::new(File::open(path)?),
-            newlines: vec![],
-        };
-        ret.update()?;
-        Ok(ret)
-    }
-    fn update(&mut self) -> anyhow::Result<()> {
-        loop {
-            let buf = self.file.fill_buf()?;
-            if buf.is_empty() {
-                break;
-            }
-            if let Some(x) = memchr::memchr(b'\n', buf) {
-                self.newlines.push(self.offset + x as u64);
-                self.offset += x as u64 + 1;
-                self.file.consume(x + 1);
-            } else {
-                let x = buf.len();
-                self.offset += x as u64;
-                self.file.consume(x);
-            }
-        }
-        Ok(())
-    }
-    /// Gives a byte-range which doesn't include the newline
-    fn line2range(&self, line: usize) -> Range<u64> {
-        let lhs = if line == 0 {
-            0
-        } else {
-            self.newlines[line - 1] as u64 + 1
-        };
-        let rhs = self.newlines[line] as u64;
-        lhs..rhs
-    }
-    fn len(&self) -> usize {
-        self.newlines.len()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test() {
-        let mut f = NamedTempFile::new().unwrap();
-        let s = b"foo,bar\n1,2\n3,4\n";
-        f.write_all(s).unwrap();
-        let lines = LineOffsets::new(f.path()).unwrap();
-        assert_eq!(lines.len(), 3);
-        // line2range never includes the newline char, hence the non-contiguous
-        // ranges
-        assert_eq!(lines.line2range(0), 0..7);
-        assert_eq!(lines.line2range(1), 8..11);
-        assert_eq!(lines.line2range(2), 12..15);
-        assert_eq!(s.len(), 16);
-    }
-}
-
-fn main_3(newlines: LineOffsets, path: &Path, stdout: &mut impl Write) -> anyhow::Result<()> {
-    let mut file = File::open(path)?;
-    let hdrs = csv::Reader::from_reader(&mut file)
-        .headers()
-        .context("reading headers")?
-        .clone();
-
-    let read_matrix =
-        |file: &mut File, start_line: usize, end_line: usize| -> anyhow::Result<Array2<String>> {
-            let byte_range =
-                newlines.line2range(start_line).start..newlines.line2range(end_line).end;
-            let rdr = take_range(file, byte_range)?;
-            let mut rdr = csv::ReaderBuilder::new()
-                .trim(csv::Trim::All)
-                .from_reader(rdr);
-            Ok(rdr.deserialize_array2::<String>((end_line - start_line, hdrs.len()))?)
-        };
-
+fn main_3(mut df: DataFrame, start_in_follow: bool, stdout: &mut impl Write) -> anyhow::Result<()> {
     let (mut cols, mut rows) = terminal::size()?;
     let mut start_line = 0usize;
     let mut start_col = 0usize;
@@ -186,9 +83,7 @@ fn main_3(newlines: LineOffsets, path: &Path, stdout: &mut impl Write) -> anyhow
     let mut drawer = GridDrawer::default();
 
     loop {
-        let end_line = min(newlines.len() - 2, start_line + rows as usize - 2);
-        let matrix = read_matrix(&mut file, start_line, end_line).context("read matrix")?;
-
+        let end_line = min(df.len() - 2, start_line + rows as usize - 2);
         drawer.draw(
             stdout,
             &mut df,
