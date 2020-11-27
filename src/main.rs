@@ -16,6 +16,9 @@ use tempfile::*;
 #[derive(StructOpt)]
 struct Opts {
     path: Option<PathBuf>,
+    /// Start in follow mode
+    #[structopt(short, long)]
+    follow: bool,
 }
 
 fn main() {
@@ -65,7 +68,7 @@ fn main_2(opts: Opts) -> anyhow::Result<()> {
     stdout.queue(terminal::EnterAlternateScreen)?.flush()?;
 
     // Store the result so the cleanup happens even if there's an error
-    let result = main_3(df, &mut stdout);
+    let result = main_3(df, opts.follow, &mut stdout);
 
     // Clean up terminal
     stdout.queue(terminal::LeaveAlternateScreen)?.flush()?;
@@ -73,7 +76,7 @@ fn main_2(opts: Opts) -> anyhow::Result<()> {
     result
 }
 
-fn main_3(mut df: DataFrame, stdout: &mut impl Write) -> anyhow::Result<()> {
+fn main_3(mut df: DataFrame, start_in_follow: bool, stdout: &mut impl Write) -> anyhow::Result<()> {
     let (mut cols, mut rows) = terminal::size()?;
     let mut start_line = 0usize;
     let mut start_col = 0usize;
@@ -87,11 +90,19 @@ fn main_3(mut df: DataFrame, stdout: &mut impl Write) -> anyhow::Result<()> {
         Jump,
         Search,
         Exclude,
+        Follow,
     }
     let mut input_buf = String::new();
-    let mut mode = Mode::Jump;
+    let mut mode = if start_in_follow {
+        Mode::Follow
+    } else {
+        Mode::Jump
+    };
 
     loop {
+        if mode == Mode::Follow {
+            start_line = max(0, df.len().saturating_sub(rows as usize));
+        }
         let end_line = min(df.len() - 2, start_line + rows as usize - 2);
         drawer.draw(
             stdout,
@@ -111,6 +122,7 @@ fn main_3(mut df: DataFrame, stdout: &mut impl Write) -> anyhow::Result<()> {
             Mode::Jump => ": ",
             Mode::Search => "/ ",
             Mode::Exclude => "- ",
+            Mode::Follow => "> ",
         };
         stdout
             .queue(cursor::MoveTo(0, rows))?
@@ -152,7 +164,7 @@ fn main_3(mut df: DataFrame, stdout: &mut impl Write) -> anyhow::Result<()> {
         use Mode::*;
         match (mode, key.code) {
             // Exiting the program
-            (Jump, Esc) | (Jump, Char('q')) => return Ok(()),
+            (Jump, Esc) | (Jump, Char('q')) | (Follow, Char('q')) => return Ok(()),
             (_, Char('c')) if key.modifiers == KeyModifiers::CONTROL => return Ok(()),
 
             // Typing at the prompt (search/exclude modes)
@@ -213,12 +225,16 @@ fn main_3(mut df: DataFrame, stdout: &mut impl Write) -> anyhow::Result<()> {
             (Jump, PageUp) => start_line = start_line.saturating_sub(rows as usize - 2),
             (Jump, Home) => start_line = 0,
             (Jump, End) => start_line = max_line,
-            (Jump, Right) | (Jump, Char('l')) => {
+            (Jump, Right) | (Jump, Char('l')) | (Follow, Right) | (Follow, Char('l')) => {
                 start_col += 1
             }
-            (Jump, Left) | (Jump, Char('h')) => {
+            (Jump, Left) | (Jump, Char('h')) | (Follow, Left) | (Follow, Char('h')) => {
                 start_col = start_col.saturating_sub(1)
             }
+
+            // Follow mode: 'f' to enter, anything else leaves
+            (Jump, Char('f')) | (Jump, Char('F')) => mode = Follow,
+            (Follow, _) => mode = Jump,
 
             _ => (),
         }
