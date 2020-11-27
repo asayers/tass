@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 use structopt::StructOpt;
 use tempfile::*;
 
+/// A pager for tabular data
 #[derive(StructOpt)]
 struct Opts {
     path: Option<PathBuf>,
