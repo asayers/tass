@@ -7,7 +7,7 @@ use anyhow::{bail, Context};
 use crossterm::tty::IsTty;
 use crossterm::*;
 use std::cmp::{max, min};
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use structopt::StructOpt;
@@ -47,10 +47,9 @@ fn main_2(opts: Opts) -> anyhow::Result<()> {
             let tempfile = NamedTempFile::new().context("creating tempfile")?;
             let (mut file, path) = tempfile.into_parts();
             std::thread::spawn(move || {
-                let stdin = BufReader::new(stdin.lock());
                 // Try to push a whole line atomically - otherwise the main
                 // thread may see a line with the wrong number of columns.
-                for line in stdin.lines() {
+                for line in stdin.lock().lines() {
                     let mut line = line.unwrap();
                     line.push('\n');
                     file.write_all(line.as_bytes())
