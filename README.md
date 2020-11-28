@@ -3,7 +3,7 @@
 
 It's like `less`, but for CSV!  It looks like this:
 
-<img src="https://github.com/asayers/tass/raw/master/screenshot.png">
+<img src="https://github.com/asayers/tass/raw/master/demo.gif">
 
 ## Installing
 
