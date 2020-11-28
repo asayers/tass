@@ -90,6 +90,7 @@ fn main_3(mut df: DataFrame, start_in_follow: bool, stdout: &mut impl Write) -> 
     let mut last_search = String::new();
     let mut exclude = vec![];
     let mut drawer = GridDrawer::default();
+    let mut should_refresh_data = true;
 
     #[derive(Clone, Copy, PartialEq)]
     enum Mode {
@@ -147,7 +148,7 @@ fn main_3(mut df: DataFrame, start_in_follow: bool, stdout: &mut impl Write) -> 
         stdout.flush()?;
 
         // TODO: Get a prompt notification of file change, don't poll
-        if !event::poll(Duration::from_millis(100))? {
+        if !event::poll(Duration::from_millis(100))? && should_refresh_data {
             df.refresh()?;
             continue;
         }
@@ -171,7 +172,19 @@ fn main_3(mut df: DataFrame, start_in_follow: bool, stdout: &mut impl Write) -> 
         match (mode, key.code) {
             // Exiting the program
             (Jump, Esc) | (Jump, Char('q')) | (Follow, Char('q')) => return Ok(()),
-            (_, Char('c')) if key.modifiers == KeyModifiers::CONTROL => return Ok(()),
+
+            // Stopping the flow of stdin
+            //
+            // This is a poor attempt to mimic the behaviour of less.  In less,
+            // ctrl-C closes stdin, thus killing the upstream process (well,
+            // it's up to the process what to do, but this is normally what
+            // happens when writing to stdout fails).
+            //
+            // I haven't yet figured out a cross-platform way to close
+            // stdin, so all we do is stop updating the _displayed_ data.
+            // The upstream process continues running, and the stdin reader
+            // thread continues writing its output to a tempfile.  Not ideal.
+            (_, Char('c')) if key.modifiers == KeyModifiers::CONTROL => should_refresh_data = false,
 
             // Typing at the prompt (search/exclude modes)
             (Search, Char(x)) | (Exclude, Char(x)) => input_buf.push(x),
