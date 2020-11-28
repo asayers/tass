@@ -1,4 +1,4 @@
-<h1 align="center">Tess</h1>
+<h1 align="center">Tass</h1>
 <p align="center">A pager for tabular data</p>
 
 It's like `less`, but for CSV!  It looks like this:
