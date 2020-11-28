@@ -1,7 +1,5 @@
-<center>
-<h1>Tess</h1>
-<h3>A pager for tabular data</h3>
-</center>
+<h1 align="center">Tess</h1>
+<p align="center">A pager for tabular data</p>
 
 It's like `less`, but for CSV!  It looks like this:
 
@@ -9,7 +7,7 @@ It's like `less`, but for CSV!  It looks like this:
 
 ## Installing
 
-If you have rust installed, install tass like this:
+If you already have rust, you can install tass like this:
 
 ```
 $ cargo install tass
@@ -31,9 +29,8 @@ Key                                               | Action
 <kbd>Left</kbd>/<kbd>h</kbd>                      | Move left one column
 <kbd>Right</kbd>/<kbd>l</kbd>                     | Move right one column
 <kbd>Home</kbd>, <kbd>End</kbd>                   | Move to start/end of file
+number <kbd>g</kbd>                               | Move to line `$number`
 <kbd>f</kbd>                                      | Move to end and auto-scroll as new rows come in
-$number<kbd>G</kbd>                               | Jump to line `$number`
-<kbd>/</kbd>, <kbd>?</kbd>                        | Search for string
-<kbd>n</kbd>                                      | Jump to next match
-<kbd>N</kbd>                                      | Jump to previous match
+<kbd>/</kbd>, <kbd>?</kbd>                        | Search, reverse-search for string
+<kbd>n</kbd>, <kbd>N</kbd>                        | Jump to next, previous match
 <kbd>q</kbd>/<kbd>Esc</kbd>                       | Quit
