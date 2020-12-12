@@ -110,6 +110,9 @@ impl LineOffsets {
         ret.update()?;
         Ok(ret)
     }
+
+    /// Reads the file, starting at EOF the last time this function was
+    /// called, up to the current EOF, adding line-break offsets to `newlines`.
     fn update(&mut self) -> anyhow::Result<()> {
         loop {
             let buf = self.file.fill_buf()?;
@@ -128,6 +131,7 @@ impl LineOffsets {
         }
         Ok(())
     }
+
     /// Gives a byte-range which doesn't include the newline
     fn line2range(&self, line: usize) -> Range<u64> {
         let lhs = if line == 0 {
@@ -138,6 +142,7 @@ impl LineOffsets {
         let rhs = self.newlines[line] as u64;
         lhs..rhs
     }
+
     fn len(&self) -> usize {
         self.newlines.len()
     }
