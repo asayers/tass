@@ -9,7 +9,8 @@ use anyhow::{bail, Context};
 use crossterm::tty::IsTty;
 use crossterm::*;
 use std::cmp::{max, min};
-use std::io::{BufRead, Write};
+use std::fs::File;
+use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use structopt::StructOpt;
@@ -24,6 +25,9 @@ struct Opts {
     follow: bool,
     #[structopt(long, default_value)]
     color_scheme: ColorScheme,
+    /// Interpret the input as newline-delimited JSON
+    #[structopt(long)]
+    json: Option<String>,
 }
 
 fn main() {
@@ -63,6 +67,58 @@ fn main_2(opts: Opts) -> anyhow::Result<()> {
             });
             Box::new(path)
         }
+    };
+    let path: Box<dyn AsRef<Path>> = if let Some(spec) = opts.json {
+        use serde_json::*;
+        let fields = spec.split(',').map(|x| x.to_string()).collect::<Vec<_>>();
+        let json_data = BufReader::new(File::open(path.as_ref())?);
+        let tempfile = NamedTempFile::new().context("creating tempfile")?;
+        let (file, path) = tempfile.into_parts();
+        let mut wtr = csv::Writer::from_writer(file);
+        wtr.write_record(fields.iter().map(|x| x.as_str()).chain(Some("other")))?;
+        std::thread::spawn(move || {
+            struct Foo<'a> {
+                data: &'a mut Map<String, Value>,
+                iter: std::slice::Iter<'a, String>,
+                done: bool,
+            }
+            impl<'a> Iterator for Foo<'a> {
+                type Item = String;
+                fn next(&mut self) -> Option<String> {
+                    match self.iter.next() {
+                        Some(f) => Some(match self.data.remove(f).unwrap_or(Value::Null) {
+                            Value::Null => "".to_string(),
+                            Value::Bool(x) => x.to_string(),
+                            Value::Number(x) => x.to_string(),
+                            Value::String(x) => x,
+                            Value::Array(x) => to_string(&x).unwrap(),
+                            Value::Object(x) => to_string(&x).unwrap(),
+                        }),
+                        None if !self.done => {
+                            self.done = true;
+                            Some(to_string(&self.data).unwrap())
+                        }
+                        None => None,
+                    }
+                }
+            }
+            // Try to push a whole line atomically - otherwise the main
+            // thread may see a line with the wrong number of columns.
+            for line in json_data.lines() {
+                let line = line.unwrap();
+                let mut obj = serde_json::from_str::<serde_json::Value>(&line).unwrap();
+                let foo = Foo {
+                    data: obj.as_object_mut().expect("JSON must be an object"),
+                    iter: fields.iter(),
+                    done: false,
+                };
+                wtr.write_record(foo).unwrap();
+                wtr.flush().unwrap();
+            }
+        });
+        Box::new(path)
+    } else {
+        path
     };
 
     let df = DataFrame::new(path.as_ref().as_ref()).context("loading dataframe")?;
