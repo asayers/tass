@@ -1,4 +1,4 @@
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use ndarray::prelude::*;
 use std::cmp::min;
 use std::fs::File;
@@ -63,6 +63,17 @@ impl DataFrame {
 
     pub fn get_headers(&self) -> impl Iterator<Item = &str> + '_ {
         self.headers.iter().map(|x| x.as_str())
+    }
+
+    pub fn get_line(&mut self, line: usize) -> anyhow::Result<csv::StringRecord> {
+        let pos = self.newlines.line2pos(line);
+        self.rdr.seek(pos)?;
+        let record = self
+            .rdr
+            .records()
+            .next()
+            .ok_or_else(|| anyhow!("no records"))?;
+        Ok(record?)
     }
 
     pub fn get_data(
