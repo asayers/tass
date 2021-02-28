@@ -40,7 +40,10 @@ impl DataFrame {
         let file = File::open(path)
             .context(path.display().to_string())
             .context("Opening file again to read actual data")?;
-        let mut rdr = csv::Reader::from_reader(file);
+        let mut rdr = csv::ReaderBuilder::new()
+            .has_headers(true)
+            .trim(csv::Trim::All)
+            .from_reader(file);
         let headers = rdr
             .headers()?
             .into_iter()
