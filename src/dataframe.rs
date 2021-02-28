@@ -10,7 +10,7 @@ use std::time::Duration;
 
 pub struct DataFrame {
     newlines: LineOffsets,
-    headers: csv::StringRecord,
+    headers: Vec<String>,
     file: File,
 }
 impl DataFrame {
@@ -40,7 +40,12 @@ impl DataFrame {
         let mut file = File::open(path)
             .context(path.display().to_string())
             .context("Opening file again to read actual data")?;
-        let headers = csv::Reader::from_reader(&mut file).headers()?.clone();
+        let mut rdr = csv::Reader::from_reader(&mut file);
+        let headers = rdr
+            .headers()?
+            .into_iter()
+            .map(|x| x.to_owned())
+            .collect::<Vec<_>>();
         Ok(DataFrame {
             newlines,
             headers,
@@ -53,7 +58,7 @@ impl DataFrame {
     }
 
     pub fn get_headers(&self) -> impl Iterator<Item = &str> + '_ {
-        self.headers.iter()
+        self.headers.iter().map(|x| x.as_str())
     }
 
     pub fn get_data(
