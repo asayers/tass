@@ -1,5 +1,6 @@
 mod dataframe;
 mod grid;
+mod kind;
 
 use crate::dataframe::*;
 use crate::grid::*;
