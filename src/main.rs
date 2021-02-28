@@ -68,7 +68,10 @@ fn main_2(opts: Opts) -> anyhow::Result<()> {
 
     // Set up terminal
     terminal::enable_raw_mode().context("entering raw mode")?;
-    stdout.queue(terminal::EnterAlternateScreen)?.flush()?;
+    stdout
+        .queue(terminal::EnterAlternateScreen)?
+        .queue(terminal::DisableLineWrap)?
+        .flush()?;
 
     // Store the result so the cleanup happens even if there's an error
     let result = main_3(df, opts.follow, &mut stdout);
@@ -77,7 +80,10 @@ fn main_2(opts: Opts) -> anyhow::Result<()> {
     std::mem::drop(path);
 
     // Clean up terminal
-    stdout.queue(terminal::LeaveAlternateScreen)?.flush()?;
+    stdout
+        .queue(terminal::EnableLineWrap)?
+        .queue(terminal::LeaveAlternateScreen)?
+        .flush()?;
     terminal::disable_raw_mode()?;
     result
 }
