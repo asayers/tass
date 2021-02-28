@@ -88,9 +88,10 @@ fn main_3(mut df: DataFrame, start_in_follow: bool, stdout: &mut impl Write) -> 
     let mut start_col = 0usize;
     let mut msgs = String::new();
     let mut last_search = String::new();
-    let mut exclude = vec![];
     let mut drawer = GridDrawer::default();
     let mut should_refresh_data = true;
+
+    let mut excluded = df.get_headers().map(|_| false).collect::<Vec<_>>();
 
     #[derive(Clone, Copy, PartialEq)]
     enum Mode {
@@ -120,8 +121,8 @@ fn main_3(mut df: DataFrame, start_in_follow: bool, stdout: &mut impl Write) -> 
                 start_line,
                 end_line,
                 start_col,
+                excluded: excluded.clone(),
             },
-            &exclude,
         )?;
 
         let position = format!("{}-{} of {}", start_line + 1, end_line, df.len() - 2);
@@ -203,7 +204,11 @@ fn main_3(mut df: DataFrame, start_in_follow: bool, stdout: &mut impl Write) -> 
             // Exclude mode
             (Jump, Char('-')) => mode = Exclude,
             (Exclude, Enter) => {
-                exclude.push(input_buf.clone());
+                if let Some(idx) = df.get_headers().position(|hdr| hdr == input_buf) {
+                    excluded[idx] = !excluded[idx];
+                } else {
+                    msgs.push_str("Column not found");
+                }
                 input_buf.clear();
                 mode = Jump;
             }

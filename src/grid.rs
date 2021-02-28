@@ -8,19 +8,19 @@ use pad::PadStr;
 use std::cmp::min;
 use std::io::Write;
 
-#[derive(PartialEq, Clone, Copy, Default)]
+#[derive(PartialEq, Clone, Default)]
 pub struct DrawParams {
     pub rows: usize,
     pub cols: usize,
     pub start_line: usize,
     pub end_line: usize,
     pub start_col: usize,
+    pub excluded: Vec<bool>,
 }
 
 #[derive(Default)]
 pub struct GridDrawer {
     prev_params: DrawParams,
-    prev_exclude: Vec<String>,
 }
 impl GridDrawer {
     pub fn draw(
@@ -28,30 +28,24 @@ impl GridDrawer {
         stdout: &mut impl Write,
         df: &mut DataFrame,
         params: DrawParams,
-        exclude: &[String],
     ) -> anyhow::Result<()> {
-        if params == self.prev_params && exclude == self.prev_exclude {
+        if params == self.prev_params {
             return Ok(());
         }
-        self.prev_params = params;
-        self.prev_exclude = exclude.to_owned();
-        draw(stdout, df, params, exclude)
+        self.prev_params = params.clone();
+        draw(stdout, df, params)
     }
 }
 
-/// This is idempotent in `params`+`exclude`.
-fn draw(
-    stdout: &mut impl Write,
-    df: &mut DataFrame,
-    params: DrawParams,
-    exclude: &[String],
-) -> anyhow::Result<()> {
+/// This is idempotent in `params`.
+fn draw(stdout: &mut impl Write, df: &mut DataFrame, params: DrawParams) -> anyhow::Result<()> {
     let DrawParams {
         rows,
         cols,
         start_line,
         end_line,
         start_col,
+        excluded,
     } = params;
 
     let matrix = df.get_data(start_line, end_line).context("read matrix")?;
@@ -64,10 +58,11 @@ fn draw(
         .take(start_col)
         .chain(
             df.get_headers()
+                .zip(excluded)
                 .enumerate()
                 .skip(start_col)
-                .map(|(i, hdr)| {
-                    let len = if exclude.iter().any(|x| x == hdr) {
+                .map(|(i, (hdr, excluded))| {
+                    let len = if excluded {
                         hdr.len()
                     } else {
                         std::iter::once(hdr)
