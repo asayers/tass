@@ -1,9 +1,8 @@
 use anyhow::Context;
 use ndarray::prelude::*;
-use ndarray_csv::Array2Reader;
 use std::cmp::min;
 use std::fs::File;
-use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
+use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::ops::Range;
 use std::path::Path;
 use std::time::Duration;
@@ -11,7 +10,8 @@ use std::time::Duration;
 pub struct DataFrame {
     newlines: LineOffsets,
     headers: Vec<String>,
-    file: File,
+    rdr: csv::Reader<File>,
+    search_file: File,
 }
 impl DataFrame {
     pub fn new(path: &Path) -> anyhow::Result<DataFrame> {
@@ -37,10 +37,10 @@ impl DataFrame {
             }
         }
 
-        let mut file = File::open(path)
+        let file = File::open(path)
             .context(path.display().to_string())
             .context("Opening file again to read actual data")?;
-        let mut rdr = csv::Reader::from_reader(&mut file);
+        let mut rdr = csv::Reader::from_reader(file);
         let headers = rdr
             .headers()?
             .into_iter()
@@ -49,7 +49,8 @@ impl DataFrame {
         Ok(DataFrame {
             newlines,
             headers,
-            file,
+            rdr,
+            search_file: File::open(path)?,
         })
     }
 
@@ -66,18 +67,20 @@ impl DataFrame {
         start_line: usize,
         end_line: usize,
     ) -> anyhow::Result<Array2<String>> {
-        fn take_range(file: &mut File, r: Range<u64>) -> std::io::Result<impl Read + '_> {
-            file.seek(SeekFrom::Start(r.start))?;
-            Ok(file.take(r.end - r.start))
+        let pos = self.newlines.line2pos(start_line);
+        self.rdr.seek(pos)?;
+
+        let n_rows = end_line - start_line;
+        let n_cols = self.headers.len();
+
+        let mut vals = Vec::with_capacity(n_cols * n_rows);
+        for row in self.rdr.records().take(n_rows) {
+            for val in &row? {
+                vals.push(val.to_owned());
+            }
         }
 
-        let byte_range =
-            self.newlines.line2range(start_line).start..self.newlines.line2range(end_line).end;
-        let rdr = take_range(&mut self.file, byte_range)?;
-        let mut rdr = csv::ReaderBuilder::new()
-            .trim(csv::Trim::All)
-            .from_reader(rdr);
-        Ok(rdr.deserialize_array2::<String>((end_line - start_line, self.headers.len()))?)
+        Ok(Array2::from_shape_vec((n_rows, n_cols), vals)?)
     }
 
     pub fn len(&self) -> usize {
@@ -88,14 +91,14 @@ impl DataFrame {
         let max_line = self.len() - 2;
         let add = |start_line: usize, x: usize| min(max_line, start_line.saturating_add(x));
         let x = self.newlines.line2range(start_line).start;
-        self.file.seek(SeekFrom::Start(x))?;
+        self.search_file.seek(SeekFrom::Start(x))?;
         let matcher = grep_regex::RegexMatcher::new(pattern)?;
         let mut ret = None;
         let sink = grep_searcher::sinks::UTF8(|line, _| {
             ret = Some(add(start_line - 1, line as usize - 1));
             Ok(false)
         });
-        grep_searcher::Searcher::new().search_file(&matcher, &self.file, sink)?;
+        grep_searcher::Searcher::new().search_file(&matcher, &self.search_file, sink)?;
         Ok(ret)
     }
 }
@@ -146,6 +149,15 @@ impl LineOffsets {
         };
         let rhs = self.newlines[line] as u64;
         lhs..rhs
+    }
+
+    fn line2pos(&self, mut line: usize) -> csv::Position {
+        line += 1;
+        let mut pos = csv::Position::new();
+        pos.set_line(line as u64)
+            .set_byte(self.line2range(line).start)
+            .set_record(0);
+        pos
     }
 
     fn len(&self) -> usize {

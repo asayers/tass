@@ -140,12 +140,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "either"
-version = "1.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e78d4f1cc4ae33bbfc157ed5d5a5ef3bc29227303d595861deb238fcec4e9457"
-
-[[package]]
 name = "encoding_rs"
 version = "0.8.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -335,18 +329,6 @@ dependencies = [
  "num-integer",
  "num-traits",
  "rawpointer",
-]
-
-[[package]]
-name = "ndarray-csv"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2fdc609393d495aac8dc052ed90cf0285f2c6c05546a403db6e54f9f2772549a"
-dependencies = [
- "csv",
- "either",
- "ndarray",
- "serde",
 ]
 
 [[package]]
@@ -673,7 +655,6 @@ dependencies = [
  "grep-searcher",
  "memchr",
  "ndarray",
- "ndarray-csv",
  "pad",
  "structopt",
  "tempfile",
