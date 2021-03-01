@@ -16,7 +16,7 @@ pub struct DataFrame {
 impl DataFrame {
     pub fn new(path: &Path) -> anyhow::Result<DataFrame> {
         let mut newlines = LineOffsets::new(path).context("Scanning newlines")?;
-        const MIN_LINES: usize = 3;
+        const MIN_LINES: usize = 2;
         let n = newlines.len();
         if n < MIN_LINES {
             let mut sleep = Duration::from_millis(1);
