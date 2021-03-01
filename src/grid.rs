@@ -6,7 +6,9 @@ use anyhow::Context;
 use crossterm::*;
 use ndarray::prelude::*;
 use pad::{Alignment, PadStr};
+use std::fmt::{self, Display};
 use std::io::Write;
+use std::str::FromStr;
 
 #[derive(PartialEq, Clone, Default)]
 pub struct DrawParams {
@@ -17,6 +19,7 @@ pub struct DrawParams {
     pub start_col: usize,
     pub excluded: Vec<bool>,
     pub kinds: Vec<DataKind>,
+    pub color_scheme: ColorScheme,
 }
 
 #[derive(Default)]
@@ -48,6 +51,7 @@ fn draw(stdout: &mut impl Write, df: &mut DataFrame, params: DrawParams) -> anyh
         start_col,
         excluded,
         kinds,
+        color_scheme,
     } = params;
 
     let matrix = df.get_data(start_line, end_line).context("read matrix")?;
@@ -117,7 +121,7 @@ fn draw(stdout: &mut impl Write, df: &mut DataFrame, params: DrawParams) -> anyh
             // TODO: return early if we're writing into the void
             if *width > 0 {
                 let (alignment, fg_col) = match kind {
-                    DataKind::Categorical => (Alignment::Left, cat_color(field)),
+                    DataKind::Categorical => (Alignment::Left, color_scheme.cat_color(field)),
                     DataKind::Numerical => (Alignment::Right, style::Color::Reset),
                     DataKind::Unstructured => (Alignment::Left, style::Color::Reset),
                 };
@@ -150,25 +154,59 @@ fn draw(stdout: &mut impl Write, df: &mut DataFrame, params: DrawParams) -> anyh
     Ok(())
 }
 
-fn cat_color(x: &str) -> style::Color {
-    let mut hash = 7;
-    for byte in x.bytes() {
-        hash = ((hash << 5) + hash) + byte;
+#[derive(PartialEq, Clone, Copy, Debug)]
+pub enum ColorScheme {
+    None,
+    TuttiFruity,
+}
+impl Default for ColorScheme {
+    fn default() -> ColorScheme {
+        ColorScheme::TuttiFruity
     }
-    use style::Color::*;
-    match hash % 12 {
-        0 => Red,
-        1 => DarkRed,
-        2 => Green,
-        3 => DarkGreen,
-        4 => Yellow,
-        5 => DarkYellow,
-        6 => Blue,
-        7 => DarkBlue,
-        8 => Magenta,
-        9 => DarkMagenta,
-        10 => Cyan,
-        11 => DarkCyan,
-        _ => unreachable!(),
+}
+impl FromStr for ColorScheme {
+    type Err = String;
+    fn from_str(x: &str) -> std::result::Result<ColorScheme, String> {
+        match x {
+            "none" => Ok(ColorScheme::None),
+            "tutti-fruity" => Ok(ColorScheme::TuttiFruity),
+            _ => Err(format!("Color scheme not found: {}", x)),
+        }
+    }
+}
+impl Display for ColorScheme {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ColorScheme::None => f.write_str("none"),
+            ColorScheme::TuttiFruity => f.write_str("tutti-fruity"),
+        }
+    }
+}
+
+impl ColorScheme {
+    fn cat_color(&self, x: &str) -> style::Color {
+        let mut hash = 7;
+        for byte in x.bytes() {
+            hash = ((hash << 5) + hash) + byte;
+        }
+        use style::Color::*;
+        match self {
+            ColorScheme::None => Reset,
+            ColorScheme::TuttiFruity => match hash % 12 {
+                0 => Red,
+                1 => DarkRed,
+                2 => Green,
+                3 => DarkGreen,
+                4 => Yellow,
+                5 => DarkYellow,
+                6 => Blue,
+                7 => DarkBlue,
+                8 => Magenta,
+                9 => DarkMagenta,
+                10 => Cyan,
+                11 => DarkCyan,
+                _ => unreachable!(),
+            },
+        }
     }
 }

@@ -22,6 +22,8 @@ struct Opts {
     /// Start in follow mode
     #[structopt(short, long)]
     follow: bool,
+    #[structopt(long, default_value)]
+    color_scheme: ColorScheme,
 }
 
 fn main() {
@@ -76,7 +78,7 @@ fn main_2(opts: Opts) -> anyhow::Result<()> {
         .flush()?;
 
     // Store the result so the cleanup happens even if there's an error
-    let result = main_3(df, opts.follow, &mut stdout);
+    let result = main_3(df, opts.follow, opts.color_scheme, &mut stdout);
 
     // Delete the tempfile (if reading from stdin)
     std::mem::drop(path);
@@ -90,7 +92,12 @@ fn main_2(opts: Opts) -> anyhow::Result<()> {
     result
 }
 
-fn main_3(mut df: DataFrame, start_in_follow: bool, stdout: &mut impl Write) -> anyhow::Result<()> {
+fn main_3(
+    mut df: DataFrame,
+    start_in_follow: bool,
+    color_scheme: ColorScheme,
+    stdout: &mut impl Write,
+) -> anyhow::Result<()> {
     let (mut cols, mut rows) = terminal::size()?;
     let mut start_line = 0usize;
     let mut start_col = 0usize;
@@ -141,6 +148,7 @@ fn main_3(mut df: DataFrame, start_in_follow: bool, stdout: &mut impl Write) -> 
                 start_col,
                 excluded: excluded.clone(),
                 kinds: estimators.iter().map(|x| x.estimate()).collect(),
+                color_scheme,
             },
         )?;
 
