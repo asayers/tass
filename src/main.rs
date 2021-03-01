@@ -80,7 +80,7 @@ fn main_2(opts: Opts) -> anyhow::Result<()> {
 
     INDEX
         .set(Mutex::new(
-            Index::new(path.as_ref().as_ref()).context("Scanning newlines")?,
+            Index::from_file(path.as_ref().as_ref()).context("Scanning newlines")?,
         ))
         .map_err(|_| anyhow!("Tried to set the index twice!"))?;
 

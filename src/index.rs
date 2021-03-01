@@ -7,16 +7,16 @@ use std::path::Path;
 pub struct Index {
     offset: u64,
     newlines: Vec<u64>,
-    file: BufReader<File>,
+    file: Option<BufReader<File>>,
     pub watch_for_updates: bool,
     up_to_date: bool,
 }
 
 impl Index {
-    pub fn new(path: &Path) -> anyhow::Result<Index> {
+    pub fn from_file(path: &Path) -> anyhow::Result<Index> {
         let mut ret = Index {
             offset: 0,
-            file: BufReader::new(File::open(path)?),
+            file: Some(BufReader::new(File::open(path)?)),
             newlines: vec![],
             watch_for_updates: true,
             up_to_date: false,
@@ -40,13 +40,16 @@ impl Index {
         if !self.watch_for_updates {
             return Ok(());
         }
+        if self.file.is_none() {
+            return Ok(());
+        }
         let n_lines_start = self.len();
         loop {
             if self.len() - n_lines_start > 1_000_000 {
                 self.up_to_date = false;
                 return Ok(());
             }
-            let buf = self.file.fill_buf()?;
+            let buf = self.file.as_mut().unwrap().fill_buf()?;
             if buf.is_empty() {
                 self.up_to_date = true;
                 return Ok(());
@@ -54,11 +57,11 @@ impl Index {
             if let Some(x) = memchr::memchr(b'\n', buf) {
                 self.newlines.push(self.offset + x as u64);
                 self.offset += x as u64 + 1;
-                self.file.consume(x + 1);
+                self.file.as_mut().unwrap().consume(x + 1);
             } else {
                 let x = buf.len();
                 self.offset += x as u64;
-                self.file.consume(x);
+                self.file.as_mut().unwrap().consume(x);
             }
         }
     }
