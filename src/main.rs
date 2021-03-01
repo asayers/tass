@@ -118,7 +118,6 @@ fn main_3(
     let mut msgs = String::new();
     let mut last_search = String::new();
     let mut drawer = GridDrawer::default();
-    let mut should_refresh_data = true;
 
     let mut excluded = df.get_headers().map(|_| false).collect::<Vec<_>>();
     let mut estimators = df
@@ -195,7 +194,7 @@ fn main_3(
         stdout.flush()?;
 
         // TODO: Get a prompt notification of file change, don't poll
-        if !event::poll(Duration::from_millis(100))? && should_refresh_data {
+        if !event::poll(Duration::from_millis(100))? {
             INDEX.get().unwrap().lock().unwrap().update()?;
             continue;
         }
@@ -231,7 +230,7 @@ fn main_3(
             // stdin, so all we do is stop updating the _displayed_ data.
             // The upstream process continues running, and the stdin reader
             // thread continues writing its output to a tempfile.  Not ideal.
-            (_, Char('c')) if key.modifiers == KeyModifiers::CONTROL => should_refresh_data = false,
+            (_, Char('c')) if key.modifiers == KeyModifiers::CONTROL => get_index().stop_watching(),
 
             // Typing at the prompt (search/exclude modes)
             (Search, Char(x)) | (Exclude, Char(x)) => input_buf.push(x),

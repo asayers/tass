@@ -8,6 +8,7 @@ pub struct Index {
     offset: u64,
     newlines: Vec<u64>,
     file: BufReader<File>,
+    watch_for_updates: bool,
 }
 
 impl Index {
@@ -16,14 +17,22 @@ impl Index {
             offset: 0,
             file: BufReader::new(File::open(path)?),
             newlines: vec![],
+            watch_for_updates: true,
         };
         ret.update()?;
         Ok(ret)
     }
 
+    pub fn stop_watching(&mut self) {
+        self.watch_for_updates = false;
+    }
+
     /// Reads the file, starting at EOF the last time this function was
     /// called, up to the current EOF, adding line-break offsets to `newlines`.
     pub fn update(&mut self) -> anyhow::Result<()> {
+        if !self.watch_for_updates {
+            return Ok(());
+        }
         loop {
             let buf = self.file.fill_buf()?;
             if buf.is_empty() {
