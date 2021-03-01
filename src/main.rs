@@ -170,12 +170,12 @@ fn main_3(
             },
         )?;
 
-        let position = format!("{}-{} of {}", start_line + 1, end_line, n_rows - 1);
+        let position = format!("{}-{} of {} ", start_line + 1, end_line, n_rows - 1);
         let prompt = match mode {
-            Mode::Jump => ": ",
-            Mode::Search => "/ ",
-            Mode::Exclude => "- ",
-            Mode::Follow => "> ",
+            Mode::Jump => ":",
+            Mode::Search => "/",
+            Mode::Exclude => "-",
+            Mode::Follow => ">",
         };
         stdout
             .queue(cursor::MoveTo(0, rows))?
