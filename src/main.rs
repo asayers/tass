@@ -117,7 +117,7 @@ fn main_3(mut df: DataFrame, start_in_follow: bool, stdout: &mut impl Write) -> 
         if mode == Mode::Follow {
             start_line = max(0, df.len().saturating_sub(rows as usize));
         }
-        let end_line = min(df.len() - 2, start_line + rows as usize - 2);
+        let end_line = min(df.len() - 1, start_line + rows as usize - 2);
         drawer.draw(
             stdout,
             &mut df,
@@ -131,7 +131,7 @@ fn main_3(mut df: DataFrame, start_in_follow: bool, stdout: &mut impl Write) -> 
             },
         )?;
 
-        let position = format!("{}-{} of {}", start_line + 1, end_line, df.len() - 2);
+        let position = format!("{}-{} of {}", start_line + 1, end_line, df.len() - 1);
         let prompt = match mode {
             Mode::Jump => ": ",
             Mode::Search => "/ ",
