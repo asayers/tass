@@ -5,7 +5,6 @@ use std::cmp::min;
 use std::fs::File;
 use std::io::{Seek, SeekFrom};
 use std::path::Path;
-use std::time::Duration;
 
 pub struct DataFrame {
     headers: Vec<String>,
@@ -15,32 +14,6 @@ pub struct DataFrame {
 
 impl DataFrame {
     pub fn new(path: &Path) -> anyhow::Result<DataFrame> {
-        const MIN_LINES: usize = 2;
-        let n = get_index().len();
-        if n < MIN_LINES {
-            let mut sleep = Duration::from_millis(1);
-            loop {
-                let mut index = get_index();
-                index.update().context("Updating index")?;
-                if index.len() >= MIN_LINES {
-                    break;
-                }
-                std::mem::drop(index);
-                std::thread::sleep(sleep);
-                if sleep < Duration::from_millis(500) {
-                    sleep *= 2; // Start with an exponential backoff
-                }
-                if sleep > Duration::from_millis(500) {
-                    // Looks like we'll be waiting a while...
-                    eprintln!(
-                        "Waiting for more data... (saw {} lines but need at least {})",
-                        n, MIN_LINES
-                    );
-                    sleep = Duration::from_millis(500);
-                }
-            }
-        }
-
         let file = File::open(path)
             .context(path.display().to_string())
             .context("Opening file again to read actual data")?;

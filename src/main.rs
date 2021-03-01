@@ -83,6 +83,34 @@ fn main_2(opts: Opts) -> anyhow::Result<()> {
             Index::new(path.as_ref().as_ref()).context("Scanning newlines")?,
         ))
         .map_err(|_| anyhow!("Tried to set the index twice!"))?;
+
+    // Wait for there to be enough data
+    const MIN_LINES: usize = 2;
+    let n = get_index().len();
+    if n < MIN_LINES {
+        let mut sleep = Duration::from_millis(1);
+        loop {
+            let mut index = get_index();
+            index.update().context("Updating index")?;
+            if index.len() >= MIN_LINES {
+                break;
+            }
+            std::mem::drop(index);
+            std::thread::sleep(sleep);
+            if sleep < Duration::from_millis(500) {
+                sleep *= 2; // Start with an exponential backoff
+            }
+            if sleep > Duration::from_millis(500) {
+                // Looks like we'll be waiting a while...
+                eprintln!(
+                    "Waiting for more data... (saw {} lines but need at least {})",
+                    n, MIN_LINES
+                );
+                sleep = Duration::from_millis(500);
+            }
+        }
+    }
+
     let df = DataFrame::new(path.as_ref().as_ref()).context("loading dataframe")?;
 
     let stdout = std::io::stdout();
