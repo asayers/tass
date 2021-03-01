@@ -126,9 +126,10 @@ fn main_3(
         .map(|_| CategoryDetector::default())
         .collect::<Vec<_>>();
 
-    let samples = min(df.len() - 1, 1000);
+    let n_rows = get_index().len();
+    let samples = min(n_rows - 1, 1000);
     for i in 0..samples {
-        let line = i * (df.len() - 1) / samples;
+        let line = i * (n_rows - 1) / samples;
         let record = df.get_line(line)?;
         for (est, x) in estimators.iter_mut().zip(&record) {
             est.feed(x.to_string());
@@ -150,10 +151,11 @@ fn main_3(
     };
 
     loop {
+        let n_rows = get_index().len();
         if mode == Mode::Follow {
-            start_line = max(0, df.len().saturating_sub(rows as usize));
+            start_line = max(0, n_rows.saturating_sub(rows as usize));
         }
-        let end_line = min(df.len() - 1, start_line + rows as usize - 2);
+        let end_line = min(n_rows - 1, start_line + rows as usize - 2);
         drawer.draw(
             stdout,
             &mut df,
@@ -169,7 +171,7 @@ fn main_3(
             },
         )?;
 
-        let position = format!("{}-{} of {}", start_line + 1, end_line, df.len() - 1);
+        let position = format!("{}-{} of {}", start_line + 1, end_line, n_rows - 1);
         let prompt = match mode {
             Mode::Jump => ": ",
             Mode::Search => "/ ",
@@ -201,7 +203,7 @@ fn main_3(
         // We have user input; let's handle it
 
         msgs.clear();
-        let max_line = df.len() - 2;
+        let max_line = n_rows - 2;
         let add = |start_line: usize, x: usize| min(max_line, start_line.saturating_add(x));
         let key = match event::read()? {
             Key(k) => k,

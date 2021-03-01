@@ -92,10 +92,6 @@ impl DataFrame {
         Ok(Array2::from_shape_vec((n_rows, n_cols), vals)?)
     }
 
-    pub fn len(&self) -> usize {
-        get_index().len()
-    }
-
     pub fn search(&mut self, start_line: usize, pattern: &str) -> anyhow::Result<Option<usize>> {
         let index = get_index();
         let max_line = index.len() - 2;
