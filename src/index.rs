@@ -8,7 +8,7 @@ pub struct Index {
     offset: u64,
     newlines: Vec<u64>,
     file: BufReader<File>,
-    watch_for_updates: bool,
+    pub watch_for_updates: bool,
     up_to_date: bool,
 }
 

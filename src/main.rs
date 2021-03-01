@@ -63,11 +63,14 @@ fn main_2(opts: Opts) -> anyhow::Result<()> {
                 // Try to push a whole line atomically - otherwise the main
                 // thread may see a line with the wrong number of columns.
                 for line in stdin.lock().lines() {
-                    let mut line = line.unwrap();
-                    line.push('\n');
-                    file.write_all(line.as_bytes())
-                        .context("filling tempfile")
-                        .unwrap();
+                    let index = INDEX.get().unwrap().lock().unwrap();
+                    if index.watch_for_updates {
+                        let mut line = line.unwrap();
+                        line.push('\n');
+                        file.write_all(line.as_bytes())
+                            .context("filling tempfile")
+                            .unwrap();
+                    }
                 }
             });
             Box::new(path)
