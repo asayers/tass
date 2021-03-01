@@ -33,10 +33,15 @@ impl Index {
         if !self.watch_for_updates {
             return Ok(());
         }
+        let n_lines_start = self.len();
         loop {
+            if self.len() - n_lines_start > 1_000_000 {
+                self.up_to_date = false;
+                return Ok(());
+            }
             let buf = self.file.fill_buf()?;
             if buf.is_empty() {
-                break;
+                return Ok(());
             }
             if let Some(x) = memchr::memchr(b'\n', buf) {
                 self.newlines.push(self.offset + x as u64);
@@ -48,7 +53,6 @@ impl Index {
                 self.file.consume(x);
             }
         }
-        Ok(())
     }
 
     /// Gives a byte-range which doesn't include the newline
