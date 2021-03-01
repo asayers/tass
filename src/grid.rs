@@ -5,7 +5,7 @@ use crate::kind::*;
 use anyhow::Context;
 use crossterm::*;
 use ndarray::prelude::*;
-use pad::PadStr;
+use pad::{Alignment, PadStr};
 use std::io::Write;
 
 #[derive(PartialEq, Clone, Default)]
@@ -116,17 +116,20 @@ fn draw(stdout: &mut impl Write, df: &mut DataFrame, params: DrawParams) -> anyh
         for ((field, width), kind) in row.iter().zip(&widths).zip(&kinds) {
             // TODO: return early if we're writing into the void
             if *width > 0 {
-                let fg_col = match kind {
-                    DataKind::Categorical => cat_color(field),
-                    DataKind::Numerical => style::Color::Reset,
-                    DataKind::Unstructured => style::Color::Reset,
+                let (alignment, fg_col) = match kind {
+                    DataKind::Categorical => (Alignment::Left, cat_color(field)),
+                    DataKind::Numerical => (Alignment::Right, style::Color::Reset),
+                    DataKind::Unstructured => (Alignment::Left, style::Color::Reset),
                 };
                 stdout
                     .queue(style::SetForegroundColor(fg_col))?
                     .queue(style::Print(" "))?
-                    .queue(style::Print(
-                        field.with_exact_width((*width).saturating_sub(1)),
-                    ))?
+                    .queue(style::Print(field.pad(
+                        (*width).saturating_sub(1),
+                        ' ',
+                        alignment,
+                        true,
+                    )))?
                     .queue(style::Print(" "))?
                     .queue(style::ResetColor)?
                     .queue(style::SetAttribute(style::Attribute::Dim))?
