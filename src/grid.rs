@@ -90,8 +90,7 @@ fn draw(stdout: &mut impl Write, df: &mut DataFrame, params: DrawParams) -> anyh
         .queue(style::Print("│"))?
         .queue(style::SetAttribute(style::Attribute::Reset))?
         .queue(style::SetAttribute(style::Attribute::Underlined))?
-        .queue(style::SetAttribute(style::Attribute::Bold))?
-        .queue(style::SetForegroundColor(style::Color::Yellow))?;
+        .queue(style::SetAttribute(style::Attribute::Bold))?;
     for (field, width) in df.get_headers().zip(&widths) {
         // TODO: return early if we're writing into the void
         if *width > 0 {
