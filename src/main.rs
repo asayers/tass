@@ -170,7 +170,13 @@ fn main_3(
             },
         )?;
 
-        let position = format!("{}-{} of {} ", start_line + 1, end_line, n_rows - 1);
+        let position = format!(
+            "{}-{} of {}{} ",
+            start_line + 1,
+            end_line,
+            n_rows - 1,
+            if get_index().up_to_date() { "" } else { "..." }
+        );
         let prompt = match mode {
             Mode::Jump => ":",
             Mode::Search => "/",

@@ -9,6 +9,7 @@ pub struct Index {
     newlines: Vec<u64>,
     file: BufReader<File>,
     watch_for_updates: bool,
+    up_to_date: bool,
 }
 
 impl Index {
@@ -18,13 +19,19 @@ impl Index {
             file: BufReader::new(File::open(path)?),
             newlines: vec![],
             watch_for_updates: true,
+            up_to_date: false,
         };
         ret.update()?;
         Ok(ret)
     }
 
     pub fn stop_watching(&mut self) {
+        self.up_to_date = true;
         self.watch_for_updates = false;
+    }
+
+    pub fn up_to_date(&self) -> bool {
+        self.up_to_date
     }
 
     /// Reads the file, starting at EOF the last time this function was
@@ -41,6 +48,7 @@ impl Index {
             }
             let buf = self.file.fill_buf()?;
             if buf.is_empty() {
+                self.up_to_date = true;
                 return Ok(());
             }
             if let Some(x) = memchr::memchr(b'\n', buf) {
