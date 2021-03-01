@@ -15,13 +15,17 @@ pub struct DataFrame {
 
 impl DataFrame {
     pub fn new(path: &Path) -> anyhow::Result<DataFrame> {
-        let mut newlines = get_index();
         const MIN_LINES: usize = 2;
-        let n = newlines.len();
+        let n = get_index().len();
         if n < MIN_LINES {
             let mut sleep = Duration::from_millis(1);
-            while newlines.len() < MIN_LINES {
-                newlines.update().context("Updating newlines")?;
+            loop {
+                let mut index = get_index();
+                index.update().context("Updating index")?;
+                if index.len() >= MIN_LINES {
+                    break;
+                }
+                std::mem::drop(index);
                 std::thread::sleep(sleep);
                 if sleep < Duration::from_millis(500) {
                     sleep *= 2; // Start with an exponential backoff
