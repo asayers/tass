@@ -4,6 +4,7 @@ mod kind;
 
 use crate::dataframe::*;
 use crate::grid::*;
+use crate::kind::*;
 use anyhow::{bail, Context};
 use crossterm::tty::IsTty;
 use crossterm::*;
@@ -99,6 +100,16 @@ fn main_3(mut df: DataFrame, start_in_follow: bool, stdout: &mut impl Write) -> 
     let mut should_refresh_data = true;
 
     let mut excluded = df.get_headers().map(|_| false).collect::<Vec<_>>();
+    let mut estimators = df.get_headers().map(|_| CategoryDetector::default()).collect::<Vec<_>>();
+
+    let samples = min(df.len() - 1, 1000);
+    for i in 0..samples {
+        let line = i * (df.len() - 1) / samples;
+        let record = df.get_line(line)?;
+        for (est, x) in estimators.iter_mut().zip(&record) {
+            est.feed(x.to_string());
+        }
+    }
 
     #[derive(Clone, Copy, PartialEq)]
     enum Mode {
@@ -129,6 +140,7 @@ fn main_3(mut df: DataFrame, start_in_follow: bool, stdout: &mut impl Write) -> 
                 end_line,
                 start_col,
                 excluded: excluded.clone(),
+                kinds: estimators.iter().map(|x| x.estimate()).collect(),
             },
         )?;
 

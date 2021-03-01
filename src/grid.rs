@@ -1,6 +1,7 @@
 //! Drawing the data grid
 
 use crate::dataframe::*;
+use crate::kind::*;
 use anyhow::Context;
 use crossterm::*;
 use ndarray::prelude::*;
@@ -15,6 +16,7 @@ pub struct DrawParams {
     pub end_line: usize,
     pub start_col: usize,
     pub excluded: Vec<bool>,
+    pub kinds: Vec<DataKind>,
 }
 
 #[derive(Default)]
@@ -45,6 +47,7 @@ fn draw(stdout: &mut impl Write, df: &mut DataFrame, params: DrawParams) -> anyh
         end_line,
         start_col,
         excluded,
+        kinds: _,
     } = params;
 
     let matrix = df.get_data(start_line, end_line).context("read matrix")?;
