@@ -1,4 +1,4 @@
-## Unreleased
+## 0.4.0
 
 * Estimate whether data is numerical, textual, or categorical
 * Colourise categorical data
