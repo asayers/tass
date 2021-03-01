@@ -47,7 +47,7 @@ fn draw(stdout: &mut impl Write, df: &mut DataFrame, params: DrawParams) -> anyh
         end_line,
         start_col,
         excluded,
-        kinds: _,
+        kinds,
     } = params;
 
     let matrix = df.get_data(start_line, end_line).context("read matrix")?;
@@ -114,15 +114,22 @@ fn draw(stdout: &mut impl Write, df: &mut DataFrame, params: DrawParams) -> anyh
                 w = linnums_len - 1
             )))?
             .queue(style::SetAttribute(style::Attribute::Reset))?;
-        for (field, width) in row.iter().zip(&widths) {
+        for ((field, width), kind) in row.iter().zip(&widths).zip(&kinds) {
             // TODO: return early if we're writing into the void
             if *width > 0 {
+                let fg_col = match kind {
+                    DataKind::Categorical => cat_color(field),
+                    DataKind::Numerical => style::Color::Reset,
+                    DataKind::Unstructured => style::Color::Reset,
+                };
                 stdout
+                    .queue(style::SetForegroundColor(fg_col))?
                     .queue(style::Print(" "))?
                     .queue(style::Print(
                         field.with_exact_width((*width).saturating_sub(1)),
                     ))?
                     .queue(style::Print(" "))?
+                    .queue(style::ResetColor)?
                     .queue(style::SetAttribute(style::Attribute::Dim))?
                     .queue(style::Print(SEPARATOR))?
                     .queue(style::SetAttribute(style::Attribute::Reset))?;
@@ -139,4 +146,27 @@ fn draw(stdout: &mut impl Write, df: &mut DataFrame, params: DrawParams) -> anyh
     stdout.queue(style::ResetColor)?;
 
     Ok(())
+}
+
+fn cat_color(x: &str) -> style::Color {
+    let mut hash = 7;
+    for byte in x.bytes() {
+        hash = ((hash << 5) + hash) + byte;
+    }
+    use style::Color::*;
+    match hash % 12 {
+        0 => Red,
+        1 => DarkRed,
+        2 => Green,
+        3 => DarkGreen,
+        4 => Yellow,
+        5 => DarkYellow,
+        6 => Blue,
+        7 => DarkBlue,
+        8 => Magenta,
+        9 => DarkMagenta,
+        10 => Cyan,
+        11 => DarkCyan,
+        _ => unreachable!(),
+    }
 }
