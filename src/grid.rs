@@ -157,11 +157,12 @@ fn draw(stdout: &mut impl Write, df: &mut DataFrame, params: DrawParams) -> anyh
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub enum ColorScheme {
     None,
+    Pastels,
     TuttiFruity,
 }
 impl Default for ColorScheme {
     fn default() -> ColorScheme {
-        ColorScheme::TuttiFruity
+        ColorScheme::Pastels
     }
 }
 impl FromStr for ColorScheme {
@@ -169,6 +170,7 @@ impl FromStr for ColorScheme {
     fn from_str(x: &str) -> std::result::Result<ColorScheme, String> {
         match x {
             "none" => Ok(ColorScheme::None),
+            "pastels" => Ok(ColorScheme::Pastels),
             "tutti-fruity" => Ok(ColorScheme::TuttiFruity),
             _ => Err(format!("Color scheme not found: {}", x)),
         }
@@ -178,6 +180,7 @@ impl Display for ColorScheme {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             ColorScheme::None => f.write_str("none"),
+            ColorScheme::Pastels => f.write_str("pastels"),
             ColorScheme::TuttiFruity => f.write_str("tutti-fruity"),
         }
     }
@@ -192,6 +195,15 @@ impl ColorScheme {
         use style::Color::*;
         match self {
             ColorScheme::None => Reset,
+            ColorScheme::Pastels => {
+                let (r, g, b) = hsl::HSL {
+                    h: (hash as f64) * 360. / 255.,
+                    s: 0.5,
+                    l: 0.7,
+                }
+                .to_rgb();
+                Rgb { r, g, b }
+            }
             ColorScheme::TuttiFruity => match hash % 12 {
                 0 => Red,
                 1 => DarkRed,
