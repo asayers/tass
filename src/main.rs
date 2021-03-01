@@ -5,13 +5,16 @@ mod kind;
 
 use crate::dataframe::*;
 use crate::grid::*;
+use crate::index::*;
 use crate::kind::*;
-use anyhow::{bail, Context};
+use anyhow::{anyhow, bail, Context};
 use crossterm::tty::IsTty;
 use crossterm::*;
+use once_cell::sync::OnceCell;
 use std::cmp::{max, min};
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, MutexGuard};
 use std::time::Duration;
 use structopt::StructOpt;
 use tempfile::*;
@@ -41,6 +44,11 @@ fn main() {
     }
 }
 
+static INDEX: OnceCell<Mutex<Index>> = OnceCell::new();
+fn get_index<'a>() -> MutexGuard<'a, Index> {
+    INDEX.get().unwrap().lock().unwrap()
+}
+
 fn main_2(opts: Opts) -> anyhow::Result<()> {
     let path: Box<dyn AsRef<Path>> = match opts.path {
         Some(path) => Box::new(path),
@@ -66,6 +74,11 @@ fn main_2(opts: Opts) -> anyhow::Result<()> {
         }
     };
 
+    INDEX
+        .set(Mutex::new(
+            Index::new(path.as_ref().as_ref()).context("Scanning newlines")?,
+        ))
+        .map_err(|_| anyhow!("Tried to set the index twice!"))?;
     let df = DataFrame::new(path.as_ref().as_ref()).context("loading dataframe")?;
 
     let stdout = std::io::stdout();

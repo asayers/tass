@@ -662,6 +662,7 @@ dependencies = [
  "hsl",
  "memchr",
  "ndarray",
+ "once_cell",
  "pad",
  "structopt",
  "tempfile",

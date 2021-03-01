@@ -1,4 +1,4 @@
-use crate::index::*;
+use crate::get_index;
 use anyhow::{anyhow, Context};
 use ndarray::prelude::*;
 use std::cmp::min;
@@ -8,7 +8,6 @@ use std::path::Path;
 use std::time::Duration;
 
 pub struct DataFrame {
-    newlines: Index,
     headers: Vec<String>,
     rdr: csv::Reader<File>,
     search_file: File,
@@ -16,7 +15,7 @@ pub struct DataFrame {
 
 impl DataFrame {
     pub fn new(path: &Path) -> anyhow::Result<DataFrame> {
-        let mut newlines = Index::new(path).context("Scanning newlines")?;
+        let mut newlines = get_index();
         const MIN_LINES: usize = 2;
         let n = newlines.len();
         if n < MIN_LINES {
@@ -51,7 +50,6 @@ impl DataFrame {
             .map(|x| x.to_owned())
             .collect::<Vec<_>>();
         Ok(DataFrame {
-            newlines,
             headers,
             rdr,
             search_file: File::open(path)?,
@@ -59,7 +57,7 @@ impl DataFrame {
     }
 
     pub fn refresh(&mut self) -> anyhow::Result<()> {
-        self.newlines.update()
+        get_index().update()
     }
 
     pub fn get_headers(&self) -> impl Iterator<Item = &str> + '_ {
@@ -67,7 +65,7 @@ impl DataFrame {
     }
 
     pub fn get_line(&mut self, line: usize) -> anyhow::Result<csv::StringRecord> {
-        let pos = self.newlines.line2pos(line);
+        let pos = get_index().line2pos(line);
         self.rdr.seek(pos)?;
         let record = self
             .rdr
@@ -82,7 +80,7 @@ impl DataFrame {
         start_line: usize,
         end_line: usize,
     ) -> anyhow::Result<Array2<String>> {
-        let pos = self.newlines.line2pos(start_line);
+        let pos = get_index().line2pos(start_line);
         self.rdr.seek(pos)?;
 
         let n_rows = end_line - start_line;
@@ -99,13 +97,14 @@ impl DataFrame {
     }
 
     pub fn len(&self) -> usize {
-        self.newlines.len()
+        get_index().len()
     }
 
     pub fn search(&mut self, start_line: usize, pattern: &str) -> anyhow::Result<Option<usize>> {
-        let max_line = self.len() - 2;
+        let index = get_index();
+        let max_line = index.len() - 2;
         let add = |start_line: usize, x: usize| min(max_line, start_line.saturating_add(x));
-        let x = self.newlines.line2range(start_line).start;
+        let x = index.line2range(start_line).start;
         self.search_file.seek(SeekFrom::Start(x))?;
         let matcher = grep_regex::RegexMatcher::new(pattern)?;
         let mut ret = None;
