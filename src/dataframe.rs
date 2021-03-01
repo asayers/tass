@@ -56,10 +56,6 @@ impl DataFrame {
         })
     }
 
-    pub fn refresh(&mut self) -> anyhow::Result<()> {
-        get_index().update()
-    }
-
     pub fn get_headers(&self) -> impl Iterator<Item = &str> + '_ {
         self.headers.iter().map(|x| x.as_str())
     }

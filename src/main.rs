@@ -194,7 +194,7 @@ fn main_3(
 
         // TODO: Get a prompt notification of file change, don't poll
         if !event::poll(Duration::from_millis(100))? && should_refresh_data {
-            df.refresh()?;
+            INDEX.get().unwrap().lock().unwrap().update()?;
             continue;
         }
 
