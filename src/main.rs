@@ -1,5 +1,6 @@
 mod dataframe;
 mod grid;
+mod index;
 mod kind;
 
 use crate::dataframe::*;
@@ -107,7 +108,10 @@ fn main_3(
     let mut should_refresh_data = true;
 
     let mut excluded = df.get_headers().map(|_| false).collect::<Vec<_>>();
-    let mut estimators = df.get_headers().map(|_| CategoryDetector::default()).collect::<Vec<_>>();
+    let mut estimators = df
+        .get_headers()
+        .map(|_| CategoryDetector::default())
+        .collect::<Vec<_>>();
 
     let samples = min(df.len() - 1, 1000);
     for i in 0..samples {
