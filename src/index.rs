@@ -67,23 +67,23 @@ impl Index {
     }
 
     /// Gives a byte-range which doesn't include the newline
-    pub fn line2range(&self, line: usize) -> Range<u64> {
+    pub fn line2range(&self, line: usize) -> Option<Range<u64>> {
         let lhs = if line == 0 {
             0
         } else {
-            self.newlines[line - 1] as u64 + 1
+            *self.newlines.get(line - 1)? + 1
         };
-        let rhs = self.newlines[line] as u64;
-        lhs..rhs
+        let rhs = *self.newlines.get(line)?;
+        Some(lhs..rhs)
     }
 
-    pub fn line2pos(&self, mut line: usize) -> csv::Position {
+    pub fn line2pos(&self, mut line: usize) -> Option<csv::Position> {
         line += 1;
         let mut pos = csv::Position::new();
         pos.set_line(line as u64)
-            .set_byte(self.line2range(line).start)
+            .set_byte(self.line2range(line)?.start)
             .set_record(0);
-        pos
+        Some(pos)
     }
 
     pub fn len(&self) -> usize {
@@ -106,9 +106,9 @@ mod tests {
         assert_eq!(lines.len(), 3);
         // line2range never includes the newline char, hence the non-contiguous
         // ranges
-        assert_eq!(lines.line2range(0), 0..7);
-        assert_eq!(lines.line2range(1), 8..11);
-        assert_eq!(lines.line2range(2), 12..15);
+        assert_eq!(lines.line2range(0), Some(0..7));
+        assert_eq!(lines.line2range(1), Some(8..11));
+        assert_eq!(lines.line2range(2), Some(12..15));
         assert_eq!(s.len(), 16);
     }
 }

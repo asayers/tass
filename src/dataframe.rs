@@ -38,7 +38,7 @@ impl DataFrame {
     }
 
     pub fn get_line(&mut self, line: usize) -> anyhow::Result<csv::StringRecord> {
-        let pos = get_index().line2pos(line);
+        let pos = get_index().line2pos(line).ok_or(anyhow!("Out of range"))?;
         self.rdr.seek(pos)?;
         let record = self
             .rdr
@@ -53,7 +53,9 @@ impl DataFrame {
         start_line: usize,
         end_line: usize,
     ) -> anyhow::Result<Array2<String>> {
-        let pos = get_index().line2pos(start_line);
+        let pos = get_index()
+            .line2pos(start_line)
+            .ok_or(anyhow!("Out of range"))?;
         self.rdr.seek(pos)?;
 
         let n_rows = end_line - start_line;
@@ -73,7 +75,10 @@ impl DataFrame {
         let index = get_index();
         let max_line = index.len() - 2;
         let add = |start_line: usize, x: usize| min(max_line, start_line.saturating_add(x));
-        let x = index.line2range(start_line).start;
+        let x = index
+            .line2range(start_line)
+            .ok_or(anyhow!("Out of range"))?
+            .start;
         self.search_file.seek(SeekFrom::Start(x))?;
         let matcher = grep_regex::RegexMatcher::new(pattern)?;
         let mut ret = None;
