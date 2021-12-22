@@ -25,6 +25,16 @@ impl Index {
         Ok(ret)
     }
 
+    pub fn no_file() -> Index {
+        Index {
+            offset: 0,
+            file: None,
+            newlines: vec![],
+            watch_for_updates: true,
+            up_to_date: false,
+        }
+    }
+
     pub fn stop_watching(&mut self) {
         self.up_to_date = true;
         self.watch_for_updates = false;
@@ -32,6 +42,12 @@ impl Index {
 
     pub fn up_to_date(&self) -> bool {
         self.up_to_date
+    }
+
+    /// `len` is the length of the line _without_ newline.
+    pub fn push_line(&mut self, len: u64) {
+        self.newlines.push(self.offset + len);
+        self.offset += len + 1;
     }
 
     /// Reads the file, starting at EOF the last time this function was
@@ -94,7 +110,7 @@ impl Index {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
+    use std::io::{BufReader, Cursor, Write};
     use tempfile::*;
 
     #[test]
@@ -102,7 +118,7 @@ mod tests {
         let mut f = NamedTempFile::new().unwrap();
         let s = b"foo,bar\n1,2\n3,4\n";
         f.write_all(s).unwrap();
-        let lines = Index::new(f.path()).unwrap();
+        let lines = Index::from_file(f.path()).unwrap();
         assert_eq!(lines.len(), 3);
         // line2range never includes the newline char, hence the non-contiguous
         // ranges
@@ -110,5 +126,21 @@ mod tests {
         assert_eq!(lines.line2range(1), Some(8..11));
         assert_eq!(lines.line2range(2), Some(12..15));
         assert_eq!(s.len(), 16);
+    }
+
+    #[test]
+    fn test_stream() {
+        let mut f = NamedTempFile::new().unwrap();
+        let s = b"foo,bar\n1,2\n3,4\n";
+        f.write_all(s).unwrap();
+        let idx1 = Index::from_file(f.path()).unwrap();
+
+        let s = b"foo,bar\n1,2\n3,4\n".to_vec();
+        let mut idx2 = Index::no_file();
+        for l in BufReader::new(Cursor::new(s)).lines() {
+            idx2.push_line(l.unwrap().len() as u64);
+        }
+
+        assert_eq!(idx1.newlines, idx2.newlines);
     }
 }

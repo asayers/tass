@@ -51,8 +51,20 @@ fn get_index<'a>() -> MutexGuard<'a, Index> {
 
 fn main_2(opts: Opts) -> anyhow::Result<()> {
     let path: Box<dyn AsRef<Path>> = match opts.path {
-        Some(path) => Box::new(path),
+        Some(path) => {
+            INDEX
+                .set(Mutex::new(
+                    Index::from_file(&path).context("Scanning newlines")?,
+                ))
+                .map_err(|_| anyhow!("Tried to set the index twice!"))?;
+
+            Box::new(path)
+        }
         None => {
+            INDEX
+                .set(Mutex::new(Index::no_file()))
+                .map_err(|_| anyhow!("Tried to set the index twice!"))?;
+
             let stdin = std::io::stdin();
             if stdin.is_tty() {
                 bail!("Need to specify a filename or feed data to stdin");
@@ -70,19 +82,13 @@ fn main_2(opts: Opts) -> anyhow::Result<()> {
                         file.write_all(line.as_bytes())
                             .context("filling tempfile")
                             .unwrap();
-                        index.update().unwrap();
+                        index.push_line(line.len() as u64);
                     }
                 }
             });
             Box::new(path)
         }
     };
-
-    INDEX
-        .set(Mutex::new(
-            Index::from_file(path.as_ref().as_ref()).context("Scanning newlines")?,
-        ))
-        .map_err(|_| anyhow!("Tried to set the index twice!"))?;
 
     // Wait for there to be enough data
     const MIN_LINES: usize = 2;
