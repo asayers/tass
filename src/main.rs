@@ -82,7 +82,7 @@ fn main_2(opts: Opts) -> anyhow::Result<()> {
                         file.write_all(line.as_bytes())
                             .context("filling tempfile")
                             .unwrap();
-                        index.push_line(line.len() as u64);
+                        index.push_line(line.len() as u64 - 1); // Remove the newline
                     }
                 }
             });
