@@ -8,6 +8,7 @@ use crate::grid::*;
 use crate::index::*;
 use crate::kind::*;
 use anyhow::{anyhow, bail, Context};
+use clap::Parser;
 use crossterm::tty::IsTty;
 use crossterm::*;
 use once_cell::sync::OnceCell;
@@ -16,22 +17,21 @@ use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
 use std::time::Duration;
-use structopt::StructOpt;
 use tempfile::*;
 
 /// A pager for tabular data
-#[derive(StructOpt)]
+#[derive(Parser)]
 struct Opts {
     path: Option<PathBuf>,
     /// Start in follow mode
-    #[structopt(short, long)]
+    #[clap(short, long)]
     follow: bool,
-    #[structopt(long, default_value)]
+    #[clap(long, default_value_t)]
     color_scheme: ColorScheme,
 }
 
 fn main() {
-    let opts = Opts::from_args();
+    let opts = Opts::parse();
     match main_2(opts) {
         Ok(()) => (),
         Err(e) => {
