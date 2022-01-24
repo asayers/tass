@@ -1,3 +1,9 @@
+## 0.5.0
+
+* Start the UI immediately, scan newline off-main-thread
+* Stop reading stdin after ctrl-C
+* Update the UI immdiately when a followed file is updated
+
 ## 0.4.0
 
 * Estimate whether data is numerical, textual, or categorical
