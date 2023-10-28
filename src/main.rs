@@ -8,6 +8,7 @@ use bpaf::{Bpaf, Parser};
 use crossterm::*;
 use polars::prelude::*;
 use std::io::Write;
+use std::ops::Range;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
@@ -22,20 +23,18 @@ fn main() -> anyhow::Result<()> {
     let opts = opts().run();
 
     let start = Instant::now();
-    let scan_args = ScanArgsParquet::default();
-    let mut lf = LazyFrame::scan_parquet(&opts.path, scan_args)?;
+    let scan_args = ScanArgsParquet {
+        parallel: ParallelStrategy::None,
+        ..Default::default()
+    };
+    let lf = LazyFrame::scan_parquet(&opts.path, scan_args)?; //.with_streaming(true);
     eprintln!(
         "Loaded file {} (took {:?})",
         opts.path.display(),
         start.elapsed()
     );
 
-    let start = Instant::now();
-    let total_rows = lf.clone().select([count()]).collect()?[0]
-        .u32()?
-        .get(0)
-        .unwrap() as usize;
-    eprintln!("Counted {total_rows} rows (took {:?})", start.elapsed());
+    let foo = Foo::new(lf)?;
 
     // let mut n = 0;
     // for null_count in lf.clone().null_count().collect()?.get_columns() {
@@ -47,21 +46,12 @@ fn main() -> anyhow::Result<()> {
     // }
     // eprintln!("Hid {n} empty columns");
 
-    let col_stats = vec![ColumnStats::default(); lf.schema()?.len()];
     // lf       .schema()?
     //        .iter_fields()
     //        .map(|x| ColumnStats::new(&lf, &x.name, x.dtype))
     //        .collect::<anyhow::Result<Vec<ColumnStats>>>()?;
 
     // The width of the widest value in each column, when formatted (including the header)
-    let col_widths = lf
-        .schema()?
-        .iter_fields()
-        .zip(&col_stats)
-        .map(|(field, stats)| (field.name.len() as u16).max(stats.max_len))
-        .collect::<Vec<u16>>();
-
-    // let lf = lf.with_row_count("__parquess_idx__", None);
 
     let stdout = std::io::stdout();
     let mut stdout = stdout.lock();
@@ -74,7 +64,7 @@ fn main() -> anyhow::Result<()> {
         .flush()?;
 
     // Store the result so the cleanup happens even if there's an error
-    let result = runloop(&mut stdout, lf, total_rows, col_widths, col_stats);
+    let result = runloop(&mut stdout, foo);
 
     // Clean up terminal
     stdout
@@ -87,49 +77,103 @@ fn main() -> anyhow::Result<()> {
 
 const CHUNK_SIZE: u32 = 10_000;
 
-fn runloop(
-    stdout: &mut impl Write,
+struct Foo {
     lf: LazyFrame,
-    max_row: usize,
-    col_widths: Vec<u16>,
-    col_stats: Vec<ColumnStats>,
-) -> anyhow::Result<()> {
-    let mut term_size = terminal::size()?;
-    let mut big_df = lf.clone().slice(0, CHUNK_SIZE).collect()?;
-    let mut mini_df;
-    let idx_width = max_row.ilog10() as u16 + 1;
-    let mut start_col: usize = 0;
-    let mut start_row: usize = 0;
-    macro_rules! update_df {
-        () => {{
-            let first_available = big_df[0].idx()?.get(0).unwrap_or(0) as usize;
-            let last_available = big_df[0].idx()?.last().unwrap_or(0) as usize;
-            let available = first_available..=last_available;
-            let end_row = (start_row + term_size.1 as usize - 2).min(max_row - 1);
-            let all_rows_available = available.contains(&start_row) && available.contains(&end_row);
-            if !all_rows_available {
-                big_df = lf
-                    .clone()
-                    .slice(start_row.saturating_sub(1000) as i64, CHUNK_SIZE)
-                    .collect()?;
-            }
-            mini_df = big_df
-                .filter(&big_df[0].idx()?.gt_eq(start_row))?
-                .head(Some(term_size.1 as usize - 2));
-        }};
-    }
-    update_df!();
+    total_rows: usize,
+    available_rows: Range<usize>, // The rows in big_df
+    big_df: DataFrame,            // Includes the index column
+    mini_df: DataFrame, // A subset of the rows/columns in big_df.  Doesn't include the index column
+    col_stats: Vec<ColumnStats>, // One per column, not including the index column
+    idx_width: u16,
+}
 
-    loop {
+impl Foo {
+    fn new(lf: LazyFrame) -> anyhow::Result<Self> {
+        let start = Instant::now();
+        let total_rows = lf.clone().select([count()]).collect()?[0]
+            .u32()?
+            .get(0)
+            .unwrap() as usize;
+        eprintln!("Counted {total_rows} rows (took {:?})", start.elapsed());
+        let col_stats = vec![ColumnStats::default(); lf.schema()?.len()];
+
+        let big_df = lf.clone().slice(0, 0).collect()?;
+        let idx_width = total_rows.ilog10() as u16 + 1;
+        Ok(Foo {
+            lf,
+            total_rows,
+            available_rows: 0..0,
+            big_df,
+            mini_df: DataFrame::empty(),
+            col_stats,
+            idx_width,
+        })
+    }
+
+    fn update_df(
+        &mut self,
+        start_row: usize,
+        start_col: usize,
+        term_size: (u16, u16),
+    ) -> anyhow::Result<()> {
+        // let first_available = self.big_df[0].idx()?.get(0).unwrap_or(0) as usize;
+        // let last_available = self.big_df[0].idx()?.last().unwrap_or(0) as usize;
+        // let available = first_available..=last_available;
+        let end_row = (start_row + term_size.1 as usize - 2).min(self.total_rows - 1);
+        let all_rows_available =
+            self.available_rows.contains(&start_row) && self.available_rows.contains(&end_row);
+        if !all_rows_available {
+            let from = start_row.saturating_sub(1000);
+            self.big_df = self.lf.clone().slice(from as i64, CHUNK_SIZE).collect()?;
+            self.available_rows = from..(from + CHUNK_SIZE as usize);
+            let new_stats = self
+                .big_df
+                .get_columns()
+                .iter()
+                .skip(1)
+                .map(ColumnStats::new);
+            for (old_stats, new_stats) in self.col_stats.iter_mut().zip(new_stats) {
+                old_stats.merge(new_stats?);
+            }
+        }
+        self.mini_df = self
+            .big_df
+            .slice(
+                (start_row - self.available_rows.start) as i64,
+                term_size.1 as usize - 2,
+            )
+            // .filter(&self.big_df[0].idx()?.gt_eq(start_row))?
+            // .head(Some())
+            .select_by_range(1 + start_col..)?;
+        Ok(())
+    }
+
+    fn draw(
+        &self,
+        stdout: &mut impl Write,
+        start_row: usize,
+        start_col: usize,
+        term_size: (u16, u16),
+    ) -> anyhow::Result<()> {
         draw(
             stdout,
-            &mini_df.get_columns()[0],
-            &mini_df.select_by_range(1 + start_col..)?,
+            start_row,
+            &self.mini_df,
             term_size,
-            idx_width,
-            &col_widths[start_col..],
-            &col_stats[start_col..],
-        )?;
+            self.idx_width,
+            &self.col_stats[start_col..],
+        )
+    }
+}
+
+fn runloop(stdout: &mut impl Write, mut foo: Foo) -> anyhow::Result<()> {
+    let mut term_size = terminal::size()?;
+    let mut start_col: usize = 0;
+    let mut start_row: usize = 0;
+
+    loop {
+        foo.update_df(start_row, start_col, term_size)?;
+        foo.draw(stdout, start_row, start_col, term_size)?;
         if event::poll(Duration::from_millis(1000))? {
             let event = event::read()?;
             match event {
@@ -145,25 +189,27 @@ fn runloop(
                         start_col = start_col.saturating_sub(1)
                     }
                     event::KeyCode::Down | event::KeyCode::Char('j') => {
-                        start_row = (start_row + 1).min(max_row - 1)
+                        start_row = (start_row + 1).min(foo.total_rows - 1)
                     }
                     event::KeyCode::Up | event::KeyCode::Char('k') => {
                         start_row = start_row.saturating_sub(1)
                     }
-                    event::KeyCode::End | event::KeyCode::Char('G') => start_row = max_row - 1,
+                    event::KeyCode::End | event::KeyCode::Char('G') => {
+                        start_row = foo.total_rows - 1
+                    }
                     event::KeyCode::Home | event::KeyCode::Char('g') => start_row = 0,
                     event::KeyCode::PageUp => {
                         start_row = start_row.saturating_sub(term_size.1 as usize - 2)
                     }
                     event::KeyCode::PageDown => {
-                        start_row = (start_row + term_size.1 as usize - 2).min(max_row - 1)
+                        start_row = (start_row + term_size.1 as usize - 2).min(foo.total_rows - 1)
                     }
                     _ => (),
                 },
                 event::Event::Resize(cols, rows) => term_size = (cols, rows),
                 _ => (),
             }
-            update_df!();
+            foo.update_df(start_row, start_col, term_size)?;
         }
     }
 }

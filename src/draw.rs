@@ -8,11 +8,10 @@ use std::io::Write;
 
 pub fn draw(
     stdout: &mut impl Write,
-    idx: &Series,
+    start_row: usize,
     df: &DataFrame,
     term_size: (u16, u16),
     idx_width: u16,
-    col_widths: &[u16],
     col_stats: &[ColumnStats],
 ) -> anyhow::Result<()> {
     stdout.queue(terminal::Clear(terminal::ClearType::All))?;
@@ -27,25 +26,25 @@ pub fn draw(
 
     // Draw the index column
     stdout.queue(style::SetAttribute(style::Attribute::Dim))?;
-    let n_rows = idx.len() as u16;
-    for x in idx.idx()? {
+    let n_rows = df.height();
+    for x in start_row..(start_row + n_rows) {
         stdout.queue(cursor::MoveToNextLine(1))?;
-        write!(stdout, "{}", x.unwrap() + 1)?;
+        write!(stdout, "{}", x + 1)?;
     }
     stdout.queue(style::SetAttribute(style::Attribute::Reset))?;
 
     // Draw tildes for empty rows
     stdout.queue(style::SetForegroundColor(style::Color::Blue))?;
-    for i in n_rows..(term_size.1 - 2) {
-        stdout.queue(cursor::MoveTo(0, i + 1))?;
+    for _ in (n_rows as u16)..(term_size.1 - 2) {
+        stdout.queue(cursor::MoveToNextLine(1))?;
         write!(stdout, "~")?;
     }
     stdout.queue(style::SetForegroundColor(style::Color::Reset))?;
 
     let mut x_baseline = idx_width;
-    for ((col, width), stats) in df.get_columns().iter().zip(col_widths).zip(col_stats) {
-        draw_col(stdout, *width, stats, x_baseline, col)?;
-        x_baseline += width + 3;
+    for (col, stats) in df.get_columns().iter().zip(col_stats) {
+        draw_col(stdout, stats, x_baseline, col)?;
+        x_baseline += stats.width + 3;
         if x_baseline >= term_size.0 {
             break;
         }
@@ -74,7 +73,6 @@ fn to_float(val: &AnyValue) -> Option<f64> {
 
 fn draw_col(
     stdout: &mut impl Write,
-    width: u16,
     stats: &ColumnStats,
     x_baseline: u16,
     col: &Series,
@@ -85,7 +83,7 @@ fn draw_col(
         .queue(style::SetAttribute(style::Attribute::Underlined))?
         .queue(style::SetAttribute(style::Attribute::Bold))?
         .queue(style::Print("│"))?;
-    write!(stdout, "{:^w$}", col.name(), w = width as usize + 2)?;
+    write!(stdout, "{:^w$}", col.name(), w = stats.width as usize + 2)?;
     stdout.queue(style::SetAttribute(style::Attribute::Reset))?;
 
     let mut buf = String::new();
@@ -159,11 +157,11 @@ fn draw_col(
                 stdout,
                 "{:<w$}",
                 " ",
-                w = (width as usize).saturating_sub(buf.len())
+                w = (stats.width as usize).saturating_sub(buf.len())
             )?;
         }
-        if buf.len() > width as usize {
-            buf.truncate(width as usize - 3);
+        if buf.len() > stats.width as usize {
+            buf.truncate(stats.width as usize - 3);
             buf += "...";
         }
         stdout.write_all(buf.as_bytes())?;

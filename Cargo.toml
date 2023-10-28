@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-anyhow = "1.0.75"
+anyhow = { version = "1.0.75", features = ["backtrace"] }
 bpaf = { version = "0.9.5", features = ["derive"] }
 crossterm = "0.27.0"
 hsl = "0.1.1"
-polars = { version = "0.34.2", features = ["parquet", "lazy", "strings"] }
+polars = { version = "0.34.2", features = ["parquet", "lazy", "strings", "performant"] }

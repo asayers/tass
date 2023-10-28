@@ -4,8 +4,8 @@ use std::time::Instant;
 #[derive(Debug, Default, Clone)]
 pub struct ColumnStats {
     pub min_max: Option<MinMax>,
-    /// The length (in chars) of the longest value, when formatted
-    pub max_len: u16,
+    /// The length (in chars) of the longest value, when formatted (including the header)
+    pub width: u16,
     pub cardinality: Option<u16>,
 }
 
@@ -16,10 +16,30 @@ pub struct MinMax {
 }
 
 impl ColumnStats {
-    pub fn new(lf: &LazyFrame, name: &str, dtype: DataType) -> anyhow::Result<ColumnStats> {
-        eprint!("{name} :: {dtype}");
+    pub fn merge(&mut self, other: ColumnStats) {
+        self.min_max = self
+            .min_max
+            .zip(other.min_max)
+            .map(|(x, y)| MinMax {
+                min: x.min.min(y.min),
+                max: x.max.max(y.max),
+            })
+            .or(self.min_max)
+            .or(other.min_max);
+        self.width = self.width.max(other.width);
+        self.cardinality = self
+            .cardinality
+            .zip(other.cardinality)
+            .map(|(x, y)| x.max(y))
+            .or(self.cardinality)
+            .or(other.cardinality);
+    }
+}
+
+impl ColumnStats {
+    pub fn new(col: &Series) -> anyhow::Result<ColumnStats> {
         let start = Instant::now();
-        let stats = match dtype {
+        let mut stats = match col.dtype() {
             DataType::UInt8
             | DataType::UInt16
             | DataType::UInt32
@@ -29,8 +49,8 @@ impl ColumnStats {
             | DataType::Int32
             | DataType::Int64
             | DataType::Float32
-            | DataType::Float64 => ColumnStats::new_numeric(lf, name, dtype)?,
-            DataType::Utf8 => ColumnStats::new_string(lf, name)?,
+            | DataType::Float64 => ColumnStats::new_numeric(col)?,
+            DataType::Utf8 => ColumnStats::new_string(col)?,
             DataType::Null => ColumnStats::fixed_len(0),
             DataType::Boolean => ColumnStats::fixed_len(5), // "false"
             DataType::Date => ColumnStats::fixed_len(10),   // YYYY-MM-DD
@@ -40,34 +60,41 @@ impl ColumnStats {
                     TimeUnit::Nanoseconds => 9,
                     TimeUnit::Microseconds => 6,
                     TimeUnit::Milliseconds => 3,
-                } + tz.map(|tz| tz.to_string().len() as u16).unwrap_or(0),
+                } + tz
+                    .as_ref()
+                    .map(|tz| tz.to_string().len() as u16)
+                    .unwrap_or(0),
             ),
-            DataType::Binary | DataType::Duration(_) | DataType::List(_) | DataType::Unknown => {
+            DataType::Struct(_)
+            | DataType::Binary
+            | DataType::Duration(_)
+            | DataType::List(_)
+            | DataType::Unknown => {
                 todo!()
             }
         };
-        eprintln!(" => {stats:?} (took {:?})", start.elapsed());
+        stats.width = stats.width.max(col.name().len() as u16);
+        eprintln!(
+            "{} :: {} => {stats:?} (took {:?})",
+            col.name(),
+            col.dtype(),
+            start.elapsed()
+        );
         Ok(stats)
     }
 
-    fn new_numeric(lf: &LazyFrame, name: &str, dtype: DataType) -> anyhow::Result<ColumnStats> {
+    fn new_numeric(col: &Series) -> anyhow::Result<ColumnStats> {
         macro_rules! min_max {
             ($variant:ident, $from:ident, $to:ident) => {{
-                let stats = lf
-                    .clone()
-                    .select([col(name).min().alias("min"), col(name).max().alias("max")])
-                    .collect()?;
-                stats[0]
-                    .$from()?
-                    .get(0)
-                    .zip(stats[1].$from()?.get(0))
-                    .map(|(min, max)| MinMax {
+                col.min()
+                    .zip(col.max())
+                    .map(|(min, max): ($from, $from)| MinMax {
                         min: min as f64,
                         max: max as f64,
                     })
             }};
         }
-        let min_max = match dtype {
+        let min_max = match col.dtype() {
             DataType::UInt8 => min_max!(Integral, u8, i64),
             DataType::UInt16 => min_max!(Integral, u16, i64),
             DataType::UInt32 => min_max!(Integral, u32, i64),
@@ -80,7 +107,7 @@ impl ColumnStats {
             DataType::Float64 => min_max!(Floating, f64, f64),
             _ => unreachable!(),
         };
-        let max_len = match dtype {
+        let max_len = match col.dtype() {
             DataType::Float32 | DataType::Float64 => 15,
             DataType::UInt8
             | DataType::UInt16
@@ -103,27 +130,23 @@ impl ColumnStats {
         };
         Ok(ColumnStats {
             min_max,
-            max_len,
+            width: max_len,
             cardinality: None,
         })
     }
 
-    fn new_string(lf: &LazyFrame, name: &str) -> anyhow::Result<ColumnStats> {
-        // FIXME: This doesn't necessarily get the max length
-        let some_values = &lf
-            .clone()
-            .select([col(name).unique().head(Some(100))])
-            .collect()?[0];
+    fn new_string(col: &Series) -> anyhow::Result<ColumnStats> {
+        let unique_vals = col.unique()?;
         Ok(ColumnStats {
             min_max: None,
-            max_len: some_values.utf8()?.str_len_chars().max().unwrap_or(0) as u16,
-            cardinality: Some(some_values.len() as u16).filter(|x| *x < 100),
+            width: unique_vals.utf8()?.str_len_chars().max().unwrap_or(0) as u16,
+            cardinality: Some(unique_vals.len() as u16).filter(|x| *x < 100),
         })
     }
 
     fn fixed_len(max_len: u16) -> ColumnStats {
         ColumnStats {
-            max_len,
+            width: max_len,
             min_max: None,
             cardinality: None,
         }
