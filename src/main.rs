@@ -4,13 +4,16 @@ mod stats;
 use crate::draw::*;
 use crate::stats::*;
 use anyhow::Context;
-use arrow::array::ArrayRef;
+use arrow::record_batch::RecordBatch;
 use bpaf::{Bpaf, Parser};
 use crossterm::*;
-use polars::prelude::*;
+use parquet::arrow::arrow_reader::RowSelector;
+use parquet::file::reader::FileReader;
+use parquet::file::serialized_reader::SerializedFileReader;
+use std::fs::File;
 use std::io::Write;
 use std::ops::Range;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 /// A pager for tabular data
@@ -23,19 +26,7 @@ struct Opts {
 fn main() -> anyhow::Result<()> {
     let opts = opts().run();
 
-    let start = Instant::now();
-    let scan_args = ScanArgsParquet {
-        parallel: ParallelStrategy::None,
-        ..Default::default()
-    };
-    let lf = LazyFrame::scan_parquet(&opts.path, scan_args)?; //.with_streaming(true);
-    eprintln!(
-        "Loaded file {} (took {:?})",
-        opts.path.display(),
-        start.elapsed()
-    );
-
-    let foo = Foo::new(lf)?;
+    let foo = Foo::new(&opts.path)?;
 
     // let mut n = 0;
     // for null_count in lf.clone().null_count().collect()?.get_columns() {
@@ -76,34 +67,68 @@ fn main() -> anyhow::Result<()> {
     result
 }
 
-const CHUNK_SIZE: u32 = 10_000;
+const CHUNK_SIZE: usize = 10_000;
 
 struct Foo {
-    lf: LazyFrame,
+    file: File,
     total_rows: usize,
     available_rows: Range<usize>, // The rows in big_df
-    big_df: Vec<ArrayRef>,
-    mini_df: Vec<ArrayRef>,      // A subset of the rows/columns in big_df
+    big_df: RecordBatch,
     col_stats: Vec<ColumnStats>, // One per column
     idx_width: u16,
 }
 
+fn count_rows(file: File) -> anyhow::Result<usize> {
+    let start = Instant::now();
+    let rdr = SerializedFileReader::new(file)?;
+    let total_rows = rdr.metadata().file_metadata().num_rows() as usize;
+    eprintln!("Counted {total_rows} rows (took {:?})", start.elapsed());
+    Ok(total_rows)
+}
+
+fn fetch_batch(file: File, offset: usize, len: usize) -> anyhow::Result<RecordBatch> {
+    let start = Instant::now();
+    let mut rdr = parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder::try_new(file)?
+        .with_batch_size(len)
+        .with_row_selection(
+            vec![
+                RowSelector {
+                    row_count: offset,
+                    skip: true,
+                },
+                RowSelector {
+                    row_count: len,
+                    skip: false,
+                },
+            ]
+            .into(),
+        )
+        .build()?;
+    let batch = rdr.next().unwrap()?;
+    eprintln!(
+        "Loaded a new batch: {} MiB (took {:?})",
+        batch.get_array_memory_size() / 1024 / 1024,
+        start.elapsed(),
+    );
+    Ok(batch)
+}
+
 impl Foo {
-    fn new(lf: LazyFrame) -> anyhow::Result<Self> {
-        let start = Instant::now();
-        let total_rows = lf.clone().select([count()]).collect()?[0]
-            .u32()?
-            .get(0)
-            .unwrap() as usize;
-        eprintln!("Counted {total_rows} rows (took {:?})", start.elapsed());
-        let col_stats = vec![ColumnStats::default(); lf.schema()?.len()];
+    fn new(path: &Path) -> anyhow::Result<Self> {
+        let file = File::open(path)?;
+
+        let total_rows = count_rows(file.try_clone()?)?;
+
+        let big_df = fetch_batch(file.try_clone()?, 0, CHUNK_SIZE)?;
+
+        let n_cols = big_df.schema().fields().len();
+        let col_stats = vec![ColumnStats::default(); n_cols];
         let idx_width = total_rows.ilog10() as u16 + 1;
         Ok(Foo {
-            lf,
+            file,
             total_rows,
             available_rows: 0..0,
-            big_df: vec![],
-            mini_df: vec![],
+            big_df,
             col_stats,
             idx_width,
         })
@@ -114,59 +139,45 @@ impl Foo {
         start_row: usize,
         start_col: usize,
         term_size: (u16, u16),
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<RecordBatch> {
         let end_row = (start_row + term_size.1 as usize - 2).min(self.total_rows - 1);
         let all_rows_available =
             self.available_rows.contains(&start_row) && self.available_rows.contains(&end_row);
         if !all_rows_available {
             let from = start_row.saturating_sub(1000);
-            let mut big_df = self.lf.clone().slice(from as i64, CHUNK_SIZE).collect()?;
-            let mut chunk_iter = big_df.as_single_chunk().iter_chunks();
-            self.big_df.clear();
-            self.big_df.extend(
-                chunk_iter
-                    .next()
-                    .unwrap()
-                    .into_arrays()
-                    .into_iter()
-                    .map(|x| ArrayRef::from(x)),
-            );
-            assert!(chunk_iter.next().is_none());
-
-            self.available_rows = from..(from + CHUNK_SIZE as usize);
-            for ((name, old_stats), col) in self
-                .lf
-                .schema()?
-                .iter_names()
+            self.big_df = fetch_batch(self.file.try_clone()?, from, CHUNK_SIZE)?;
+            self.available_rows = from..(from + CHUNK_SIZE);
+            for ((field, old_stats), col) in self
+                .big_df
+                .schema()
+                .fields()
+                .iter()
                 .zip(self.col_stats.iter_mut())
-                .zip(&self.big_df)
+                .zip(self.big_df.columns())
             {
-                let new_stats = ColumnStats::new(&name, col)?;
+                let new_stats = ColumnStats::new(&field.name(), col)?;
                 old_stats.merge(new_stats);
             }
         }
-        self.mini_df.clear();
-        self.mini_df
-            .extend(self.big_df.iter().skip(start_col).map(|col| {
-                col.slice(
-                    start_row - self.available_rows.start,
-                    term_size.1 as usize - 2,
-                )
-            }));
-        Ok(())
+        let enabled_cols: Vec<usize> = (start_col..self.big_df.num_columns()).collect();
+        let offset = start_row - self.available_rows.start;
+        let len = (term_size.1 as usize - 2).min(self.big_df.num_rows() - offset);
+        let mini_df = self.big_df.project(&enabled_cols)?.slice(offset, len);
+        Ok(mini_df)
     }
 
     fn draw(
-        &self,
+        &mut self,
         stdout: &mut impl Write,
         start_row: usize,
         start_col: usize,
         term_size: (u16, u16),
     ) -> anyhow::Result<()> {
+        let mini_df = self.update_df(start_row, start_col, term_size)?;
         draw(
             stdout,
             start_row,
-            &self.mini_df,
+            mini_df.columns(),
             term_size,
             self.idx_width,
             &self.col_stats[start_col..],
@@ -180,7 +191,6 @@ fn runloop(stdout: &mut impl Write, mut foo: Foo) -> anyhow::Result<()> {
     let mut start_row: usize = 0;
 
     loop {
-        foo.update_df(start_row, start_col, term_size)?;
         foo.draw(stdout, start_row, start_col, term_size)?;
         if event::poll(Duration::from_millis(1000))? {
             let event = event::read()?;
