@@ -4,6 +4,7 @@ mod stats;
 use crate::draw::*;
 use crate::stats::*;
 use anyhow::Context;
+use arrow::array::ArrayRef;
 use bpaf::{Bpaf, Parser};
 use crossterm::*;
 use polars::prelude::*;
@@ -82,7 +83,7 @@ struct Foo {
     total_rows: usize,
     available_rows: Range<usize>, // The rows in big_df
     big_df: DataFrame,            // Includes the index column
-    mini_df: DataFrame, // A subset of the rows/columns in big_df.  Doesn't include the index column
+    mini_df: Vec<ArrayRef>, // A subset of the rows/columns in big_df.  Doesn't include the index column
     col_stats: Vec<ColumnStats>, // One per column, not including the index column
     idx_width: u16,
 }
@@ -104,7 +105,7 @@ impl Foo {
             total_rows,
             available_rows: 0..0,
             big_df,
-            mini_df: DataFrame::empty(),
+            mini_df: vec![],
             col_stats,
             idx_width,
         })
@@ -126,17 +127,12 @@ impl Foo {
             let from = start_row.saturating_sub(1000);
             self.big_df = self.lf.clone().slice(from as i64, CHUNK_SIZE).collect()?;
             self.available_rows = from..(from + CHUNK_SIZE as usize);
-            let new_stats = self
-                .big_df
-                .get_columns()
-                .iter()
-                .skip(1)
-                .map(ColumnStats::new);
+            let new_stats = self.big_df.get_columns().iter().map(ColumnStats::new);
             for (old_stats, new_stats) in self.col_stats.iter_mut().zip(new_stats) {
                 old_stats.merge(new_stats?);
             }
         }
-        self.mini_df = self
+        let mut foo = self
             .big_df
             .slice(
                 (start_row - self.available_rows.start) as i64,
@@ -144,7 +140,17 @@ impl Foo {
             )
             // .filter(&self.big_df[0].idx()?.gt_eq(start_row))?
             // .head(Some())
-            .select_by_range(1 + start_col..)?;
+            .select_by_range(start_col..)?;
+        let mut foo = foo.as_single_chunk().iter_chunks();
+        self.mini_df.clear();
+        self.mini_df.extend(
+            foo.next()
+                .unwrap()
+                .into_arrays()
+                .into_iter()
+                .map(|x| ArrayRef::from(x)),
+        );
+        assert!(foo.next().is_none());
         Ok(())
     }
 

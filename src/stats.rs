@@ -3,6 +3,7 @@ use std::time::Instant;
 
 #[derive(Debug, Default, Clone)]
 pub struct ColumnStats {
+    pub name: String,
     pub min_max: Option<MinMax>,
     /// The length (in chars) of the longest value, when formatted (including the header)
     pub width: u16,
@@ -17,6 +18,11 @@ pub struct MinMax {
 
 impl ColumnStats {
     pub fn merge(&mut self, other: ColumnStats) {
+        if self.name == "" {
+            self.name = other.name;
+        } else {
+            assert_eq!(self.name, other.name)
+        };
         self.min_max = self
             .min_max
             .zip(other.min_max)
@@ -73,6 +79,7 @@ impl ColumnStats {
                 todo!()
             }
         };
+        stats.name = col.name().to_owned();
         stats.width = stats.width.max(col.name().len() as u16);
         eprintln!(
             "{} :: {} => {stats:?} (took {:?})",
@@ -129,6 +136,7 @@ impl ColumnStats {
             _ => unreachable!(),
         };
         Ok(ColumnStats {
+            name: String::new(),
             min_max,
             width: max_len,
             cardinality: None,
@@ -138,6 +146,7 @@ impl ColumnStats {
     fn new_string(col: &Series) -> anyhow::Result<ColumnStats> {
         let unique_vals = col.unique()?;
         Ok(ColumnStats {
+            name: String::new(),
             min_max: None,
             width: unique_vals.utf8()?.str_len_chars().max().unwrap_or(0) as u16,
             cardinality: Some(unique_vals.len() as u16).filter(|x| *x < 100),
@@ -146,6 +155,7 @@ impl ColumnStats {
 
     fn fixed_len(max_len: u16) -> ColumnStats {
         ColumnStats {
+            name: String::new(),
             width: max_len,
             min_max: None,
             cardinality: None,

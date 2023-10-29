@@ -5,7 +5,9 @@ edition = "2021"
 
 [dependencies]
 anyhow = { version = "1.0.75", features = ["backtrace"] }
+arrow = "48.0.0"
 bpaf = { version = "0.9.5", features = ["derive"] }
 crossterm = "0.27.0"
 hsl = "0.1.1"
 polars = { version = "0.34.2", features = ["parquet", "lazy", "strings", "performant"] }
+polars-arrow = { version = "0.34.2", features = ["arrow_rs"] }
