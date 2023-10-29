@@ -82,9 +82,9 @@ struct Foo {
     lf: LazyFrame,
     total_rows: usize,
     available_rows: Range<usize>, // The rows in big_df
-    big_df: DataFrame,            // Includes the index column
-    mini_df: Vec<ArrayRef>, // A subset of the rows/columns in big_df.  Doesn't include the index column
-    col_stats: Vec<ColumnStats>, // One per column, not including the index column
+    big_df: Vec<ArrayRef>,
+    mini_df: Vec<ArrayRef>,      // A subset of the rows/columns in big_df
+    col_stats: Vec<ColumnStats>, // One per column
     idx_width: u16,
 }
 
@@ -97,14 +97,12 @@ impl Foo {
             .unwrap() as usize;
         eprintln!("Counted {total_rows} rows (took {:?})", start.elapsed());
         let col_stats = vec![ColumnStats::default(); lf.schema()?.len()];
-
-        let big_df = lf.clone().slice(0, 0).collect()?;
         let idx_width = total_rows.ilog10() as u16 + 1;
         Ok(Foo {
             lf,
             total_rows,
             available_rows: 0..0,
-            big_df,
+            big_df: vec![],
             mini_df: vec![],
             col_stats,
             idx_width,
@@ -117,40 +115,44 @@ impl Foo {
         start_col: usize,
         term_size: (u16, u16),
     ) -> anyhow::Result<()> {
-        // let first_available = self.big_df[0].idx()?.get(0).unwrap_or(0) as usize;
-        // let last_available = self.big_df[0].idx()?.last().unwrap_or(0) as usize;
-        // let available = first_available..=last_available;
         let end_row = (start_row + term_size.1 as usize - 2).min(self.total_rows - 1);
         let all_rows_available =
             self.available_rows.contains(&start_row) && self.available_rows.contains(&end_row);
         if !all_rows_available {
             let from = start_row.saturating_sub(1000);
-            self.big_df = self.lf.clone().slice(from as i64, CHUNK_SIZE).collect()?;
+            let mut big_df = self.lf.clone().slice(from as i64, CHUNK_SIZE).collect()?;
+            let mut chunk_iter = big_df.as_single_chunk().iter_chunks();
+            self.big_df.clear();
+            self.big_df.extend(
+                chunk_iter
+                    .next()
+                    .unwrap()
+                    .into_arrays()
+                    .into_iter()
+                    .map(|x| ArrayRef::from(x)),
+            );
+            assert!(chunk_iter.next().is_none());
+
             self.available_rows = from..(from + CHUNK_SIZE as usize);
-            let new_stats = self.big_df.get_columns().iter().map(ColumnStats::new);
-            for (old_stats, new_stats) in self.col_stats.iter_mut().zip(new_stats) {
-                old_stats.merge(new_stats?);
+            for ((name, old_stats), col) in self
+                .lf
+                .schema()?
+                .iter_names()
+                .zip(self.col_stats.iter_mut())
+                .zip(&self.big_df)
+            {
+                let new_stats = ColumnStats::new(&name, col)?;
+                old_stats.merge(new_stats);
             }
         }
-        let mut foo = self
-            .big_df
-            .slice(
-                (start_row - self.available_rows.start) as i64,
-                term_size.1 as usize - 2,
-            )
-            // .filter(&self.big_df[0].idx()?.gt_eq(start_row))?
-            // .head(Some())
-            .select_by_range(start_col..)?;
-        let mut foo = foo.as_single_chunk().iter_chunks();
         self.mini_df.clear();
-        self.mini_df.extend(
-            foo.next()
-                .unwrap()
-                .into_arrays()
-                .into_iter()
-                .map(|x| ArrayRef::from(x)),
-        );
-        assert!(foo.next().is_none());
+        self.mini_df
+            .extend(self.big_df.iter().skip(start_col).map(|col| {
+                col.slice(
+                    start_row - self.available_rows.start,
+                    term_size.1 as usize - 2,
+                )
+            }));
         Ok(())
     }
 

@@ -1,4 +1,8 @@
-use polars::prelude::*;
+use crate::draw::FLOAT_DPS;
+use arrow::{
+    array::{Array, GenericStringArray, OffsetSizeTrait, PrimitiveArray},
+    datatypes::*,
+};
 use std::time::Instant;
 
 #[derive(Debug, Default, Clone)]
@@ -42,113 +46,154 @@ impl ColumnStats {
     }
 }
 
+macro_rules! downcast_col {
+    ($col:expr) => {
+        $col.as_any().downcast_ref().unwrap()
+    };
+}
+
 impl ColumnStats {
-    pub fn new(col: &Series) -> anyhow::Result<ColumnStats> {
+    pub fn new(name: &str, col: &dyn Array) -> anyhow::Result<ColumnStats> {
         let start = Instant::now();
-        let mut stats = match col.dtype() {
-            DataType::UInt8
-            | DataType::UInt16
-            | DataType::UInt32
-            | DataType::UInt64
-            | DataType::Int8
-            | DataType::Int16
-            | DataType::Int32
-            | DataType::Int64
-            | DataType::Float32
-            | DataType::Float64 => ColumnStats::new_numeric(col)?,
-            DataType::Utf8 => ColumnStats::new_string(col)?,
+        let mut stats = match col.data_type() {
+            DataType::UInt8 => ColumnStats::new_integral::<UInt8Type>(downcast_col!(col))?,
+            DataType::UInt16 => ColumnStats::new_integral::<UInt16Type>(downcast_col!(col))?,
+            DataType::UInt32 => ColumnStats::new_integral::<UInt32Type>(downcast_col!(col))?,
+            DataType::UInt64 => ColumnStats::new_integral::<UInt64Type>(downcast_col!(col))?,
+            DataType::Int8 => ColumnStats::new_integral::<Int8Type>(downcast_col!(col))?,
+            DataType::Int16 => ColumnStats::new_integral::<Int16Type>(downcast_col!(col))?,
+            DataType::Int32 => ColumnStats::new_integral::<Int32Type>(downcast_col!(col))?,
+            DataType::Int64 => ColumnStats::new_integral::<Int64Type>(downcast_col!(col))?,
+            DataType::Float16 => ColumnStats::new_floating::<Float16Type>(downcast_col!(col))?,
+            DataType::Float32 => ColumnStats::new_floating::<Float32Type>(downcast_col!(col))?,
+            DataType::Float64 => ColumnStats::new_floating::<Float64Type>(downcast_col!(col))?,
+            DataType::Utf8 => ColumnStats::new_string::<i32>(downcast_col!(col))?,
+            DataType::LargeUtf8 => ColumnStats::new_string::<i64>(downcast_col!(col))?,
             DataType::Null => ColumnStats::fixed_len(0),
             DataType::Boolean => ColumnStats::fixed_len(5), // "false"
-            DataType::Date => ColumnStats::fixed_len(10),   // YYYY-MM-DD
-            DataType::Time => ColumnStats::fixed_len(18),   // HH:MM:SS.mmmuuunnn  TODO: Timezone?
-            DataType::Datetime(unit, tz) => ColumnStats::fixed_len(
+            DataType::Date32 | DataType::Date64 => ColumnStats::fixed_len(10), // YYYY-MM-DD
+            DataType::Time32(unit) | DataType::Time64(unit) => ColumnStats::fixed_len(match unit {
+                TimeUnit::Second => 8,              // HH:MM:SS
+                TimeUnit::Millisecond => 8 + 1 + 3, // HH:MM:SS.mmm
+                TimeUnit::Microsecond => 8 + 1 + 6, // HH:MM:SS.mmmuuu
+                TimeUnit::Nanosecond => 8 + 1 + 9,  // HH:MM:SS.mmmuuunnn
+            }),
+            DataType::Timestamp(unit, tz) => ColumnStats::fixed_len(
                 20 + match unit {
-                    TimeUnit::Nanoseconds => 9,
-                    TimeUnit::Microseconds => 6,
-                    TimeUnit::Milliseconds => 3,
+                    TimeUnit::Second => 0,
+                    TimeUnit::Millisecond => 3 + 1,
+                    TimeUnit::Microsecond => 6 + 1,
+                    TimeUnit::Nanosecond => 9 + 1,
                 } + tz
                     .as_ref()
                     .map(|tz| tz.to_string().len() as u16)
                     .unwrap_or(0),
             ),
-            DataType::Struct(_)
-            | DataType::Binary
-            | DataType::Duration(_)
-            | DataType::List(_)
-            | DataType::Unknown => {
+            DataType::Struct(_) | DataType::Binary | DataType::Duration(_) | DataType::List(_) => {
                 todo!()
             }
+            DataType::Interval(_) => todo!(),
+            DataType::FixedSizeBinary(_) => todo!(),
+            DataType::LargeBinary => todo!(),
+            DataType::FixedSizeList(_, _) => todo!(),
+            DataType::LargeList(_) => todo!(),
+            DataType::Union(_, _) => todo!(),
+            DataType::Dictionary(_, _) => todo!(),
+            DataType::Decimal128(_, _) => todo!(),
+            DataType::Decimal256(_, _) => todo!(),
+            DataType::Map(_, _) => todo!(),
+            DataType::RunEndEncoded(_, _) => todo!(),
         };
-        stats.name = col.name().to_owned();
-        stats.width = stats.width.max(col.name().len() as u16);
+        stats.name = name.to_owned();
+        stats.width = stats.width.max(name.len() as u16);
         eprintln!(
             "{} :: {} => {stats:?} (took {:?})",
-            col.name(),
-            col.dtype(),
+            name,
+            col.data_type(),
             start.elapsed()
         );
         Ok(stats)
     }
 
-    fn new_numeric(col: &Series) -> anyhow::Result<ColumnStats> {
-        macro_rules! min_max {
-            ($variant:ident, $from:ident, $to:ident) => {{
-                col.min()
-                    .zip(col.max())
-                    .map(|(min, max): ($from, $from)| MinMax {
-                        min: min as f64,
-                        max: max as f64,
-                    })
-            }};
-        }
-        let min_max = match col.dtype() {
-            DataType::UInt8 => min_max!(Integral, u8, i64),
-            DataType::UInt16 => min_max!(Integral, u16, i64),
-            DataType::UInt32 => min_max!(Integral, u32, i64),
-            DataType::UInt64 => min_max!(Integral, u64, i64),
-            DataType::Int8 => min_max!(Integral, i8, i64),
-            DataType::Int16 => min_max!(Integral, i16, i64),
-            DataType::Int32 => min_max!(Integral, i32, i64),
-            DataType::Int64 => min_max!(Integral, i64, i64),
-            DataType::Float32 => min_max!(Floating, f32, f64),
-            DataType::Float64 => min_max!(Floating, f64, f64),
-            _ => unreachable!(),
-        };
-        let max_len = match col.dtype() {
-            DataType::Float32 | DataType::Float64 => 15,
-            DataType::UInt8
-            | DataType::UInt16
-            | DataType::UInt32
-            | DataType::UInt64
-            | DataType::Int8
-            | DataType::Int16
-            | DataType::Int32
-            | DataType::Int64 => {
-                let len = |x: f64| -> u16 {
-                    1 + if x == 0.0 {
-                        0
-                    } else {
-                        x.abs().log10() as u16 + if x < 0.0 { 1 } else { 0 }
-                    }
-                };
-                min_max.map(|mm| len(mm.min).max(len(mm.max))).unwrap_or(0)
+    fn new_integral<T: ArrowNumericType>(col: &PrimitiveArray<T>) -> anyhow::Result<ColumnStats>
+    where
+        T::Native: Into<i128>,
+    {
+        let min: Option<i128> = arrow::compute::min(col).map(|x| x.into());
+        let max: Option<i128> = arrow::compute::max(col).map(|x| x.into());
+        let len = |x: i128| -> u16 {
+            1 + if x == 0 {
+                0
+            } else {
+                x.abs().ilog10() as u16 + if x < 0 { 1 } else { 0 }
             }
-            _ => unreachable!(),
         };
+        let max_len = min
+            .map(len)
+            .into_iter()
+            .chain(max.map(len))
+            .max()
+            .unwrap_or(0);
         Ok(ColumnStats {
             name: String::new(),
-            min_max,
+            min_max: min.zip(max).map(|(min, max)| MinMax {
+                min: min as f64,
+                max: max as f64,
+            }),
             width: max_len,
             cardinality: None,
         })
     }
 
-    fn new_string(col: &Series) -> anyhow::Result<ColumnStats> {
-        let unique_vals = col.unique()?;
+    fn new_floating<T: ArrowNumericType>(col: &PrimitiveArray<T>) -> anyhow::Result<ColumnStats>
+    where
+        T::Native: Into<f64>,
+    {
+        let min: Option<f64> = arrow::compute::min(col).map(|x| x.into());
+        let max: Option<f64> = arrow::compute::max(col).map(|x| x.into());
+        let len = |x: f64| -> u16 {
+            2 + FLOAT_DPS as u16
+                + if x == 0.0 {
+                    0
+                } else {
+                    x.abs().log10() as u16 + if x < 0.0 { 1 } else { 0 }
+                }
+        };
+        let max_len = min
+            .map(len)
+            .into_iter()
+            .chain(max.map(len))
+            .max()
+            .unwrap_or(0);
+        Ok(ColumnStats {
+            name: String::new(),
+            min_max: min.zip(max).map(|(min, max)| MinMax {
+                min: min as f64,
+                max: max as f64,
+            }),
+            width: max_len,
+            cardinality: None,
+        })
+    }
+
+    fn new_string<T: OffsetSizeTrait>(col: &GenericStringArray<T>) -> anyhow::Result<ColumnStats> {
+        let lens = arrow::compute::kernels::length::length(col)?;
+        let max_len = match lens.data_type() {
+            DataType::Int32 => {
+                arrow::compute::max::<Int32Type>(downcast_col!(lens)).unwrap_or(0) as u16
+            }
+            DataType::Int64 => {
+                arrow::compute::max::<Int64Type>(downcast_col!(lens)).unwrap_or(0) as u16
+            }
+            _ => unreachable!(),
+        };
+
+        let unique_vals: std::collections::HashSet<&str> = col.iter().flatten().collect();
+
         Ok(ColumnStats {
             name: String::new(),
             min_max: None,
-            width: unique_vals.utf8()?.str_len_chars().max().unwrap_or(0) as u16,
+            width: max_len,
             cardinality: Some(unique_vals.len() as u16).filter(|x| *x < 100),
         })
     }
