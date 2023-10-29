@@ -26,7 +26,7 @@ struct Opts {
 fn main() -> anyhow::Result<()> {
     let opts = opts().run();
 
-    let foo = Foo::new(&opts.path)?;
+    let foo = State::new(&opts.path)?;
 
     // let mut n = 0;
     // for null_count in lf.clone().null_count().collect()?.get_columns() {
@@ -37,13 +37,6 @@ fn main() -> anyhow::Result<()> {
     //     }
     // }
     // eprintln!("Hid {n} empty columns");
-
-    // lf       .schema()?
-    //        .iter_fields()
-    //        .map(|x| ColumnStats::new(&lf, &x.name, x.dtype))
-    //        .collect::<anyhow::Result<Vec<ColumnStats>>>()?;
-
-    // The width of the widest value in each column, when formatted (including the header)
 
     let stdout = std::io::stdout();
     let mut stdout = stdout.lock();
@@ -69,13 +62,14 @@ fn main() -> anyhow::Result<()> {
 
 const CHUNK_SIZE: usize = 10_000;
 
-struct Foo {
+struct State {
     file: File,
     total_rows: usize,
     available_rows: Range<usize>, // The rows in big_df
     big_df: RecordBatch,
     col_stats: Vec<ColumnStats>, // One per column
     idx_width: u16,
+    col_idxs: Vec<usize>,
 }
 
 fn count_rows(file: File) -> anyhow::Result<usize> {
@@ -113,24 +107,32 @@ fn fetch_batch(file: File, offset: usize, len: usize) -> anyhow::Result<RecordBa
     Ok(batch)
 }
 
-impl Foo {
+impl State {
     fn new(path: &Path) -> anyhow::Result<Self> {
         let file = File::open(path)?;
 
         let total_rows = count_rows(file.try_clone()?)?;
+        let idx_width = total_rows.ilog10() as u16 + 1;
 
         let big_df = fetch_batch(file.try_clone()?, 0, CHUNK_SIZE)?;
+        let n_cols = big_df.num_columns();
 
-        let n_cols = big_df.schema().fields().len();
-        let col_stats = vec![ColumnStats::default(); n_cols];
-        let idx_width = total_rows.ilog10() as u16 + 1;
-        Ok(Foo {
+        let col_stats = big_df
+            .schema()
+            .fields()
+            .iter()
+            .zip(big_df.columns())
+            .map(|(field, col)| ColumnStats::new(&field.name(), col))
+            .collect::<anyhow::Result<Vec<ColumnStats>>>()?;
+
+        Ok(State {
             file,
             total_rows,
-            available_rows: 0..0,
+            available_rows: 0..CHUNK_SIZE,
             big_df,
             col_stats,
             idx_width,
+            col_idxs: (0..n_cols).collect(),
         })
     }
 
@@ -144,7 +146,7 @@ impl Foo {
         let all_rows_available =
             self.available_rows.contains(&start_row) && self.available_rows.contains(&end_row);
         if !all_rows_available {
-            let from = start_row.saturating_sub(1000);
+            let from = start_row.saturating_sub(CHUNK_SIZE / 2);
             self.big_df = fetch_batch(self.file.try_clone()?, from, CHUNK_SIZE)?;
             self.available_rows = from..(from + CHUNK_SIZE);
             for ((field, old_stats), col) in self
@@ -159,10 +161,10 @@ impl Foo {
                 old_stats.merge(new_stats);
             }
         }
-        let enabled_cols: Vec<usize> = (start_col..self.big_df.num_columns()).collect();
+        let enabled_cols = &self.col_idxs[start_col..];
         let offset = start_row - self.available_rows.start;
         let len = (term_size.1 as usize - 2).min(self.big_df.num_rows() - offset);
-        let mini_df = self.big_df.project(&enabled_cols)?.slice(offset, len);
+        let mini_df = self.big_df.project(enabled_cols)?.slice(offset, len);
         Ok(mini_df)
     }
 
@@ -185,7 +187,7 @@ impl Foo {
     }
 }
 
-fn runloop(stdout: &mut impl Write, mut foo: Foo) -> anyhow::Result<()> {
+fn runloop(stdout: &mut impl Write, mut foo: State) -> anyhow::Result<()> {
     let mut term_size = terminal::size()?;
     let mut start_col: usize = 0;
     let mut start_row: usize = 0;

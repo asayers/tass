@@ -5,7 +5,7 @@ use arrow::{
 };
 use std::time::Instant;
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct ColumnStats {
     pub name: String,
     pub min_max: Option<MinMax>,
@@ -22,11 +22,7 @@ pub struct MinMax {
 
 impl ColumnStats {
     pub fn merge(&mut self, other: ColumnStats) {
-        if self.name == "" {
-            self.name = other.name;
-        } else {
-            assert_eq!(self.name, other.name)
-        };
+        assert_eq!(self.name, other.name);
         self.min_max = self
             .min_max
             .zip(other.min_max)
@@ -105,7 +101,7 @@ impl ColumnStats {
             DataType::RunEndEncoded(_, _) => todo!(),
         };
         stats.name = name.to_owned();
-        stats.width = stats.width.max(name.len() as u16);
+        stats.width = stats.width.max(name.len() as u16).max(3);
         eprintln!(
             "{} :: {} => {stats:?} (took {:?})",
             name,
@@ -188,6 +184,7 @@ impl ColumnStats {
             _ => unreachable!(),
         };
 
+        // TODO: Use the dictionary.  Don't colour columns with no dictionary
         let unique_vals: std::collections::HashSet<&str> = col.iter().flatten().collect();
 
         Ok(ColumnStats {
