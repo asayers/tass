@@ -1,20 +1,20 @@
 mod draw;
+mod parquet;
 mod stats;
 
 use crate::draw::*;
+use crate::parquet::*;
 use crate::stats::*;
+use anyhow::bail;
 use anyhow::Context;
 use arrow::record_batch::RecordBatch;
 use bpaf::{Bpaf, Parser};
 use crossterm::*;
-use parquet::arrow::arrow_reader::RowSelector;
-use parquet::file::reader::FileReader;
-use parquet::file::serialized_reader::SerializedFileReader;
 use std::fs::File;
 use std::io::Write;
 use std::ops::Range;
-use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
+use std::path::PathBuf;
+use std::time::Duration;
 
 /// A pager for tabular data
 #[derive(Bpaf)]
@@ -26,17 +26,11 @@ struct Opts {
 fn main() -> anyhow::Result<()> {
     let opts = opts().run();
 
-    let foo = State::new(&opts.path)?;
-
-    // let mut n = 0;
-    // for null_count in lf.clone().null_count().collect()?.get_columns() {
-    //     let n_nulls = null_count.u32()?.get(0).unwrap() as usize;
-    //     if n_nulls == total_rows {
-    //         lf = lf.drop_columns([null_count.name()]);
-    //         n += 1;
-    //     }
-    // }
-    // eprintln!("Hid {n} empty columns");
+    let file = match opts.path.extension().and_then(|x| x.to_str()) {
+        Some("parquet") => Box::new(ParquetFile::new(File::open(&opts.path)?)),
+        _ => bail!("Unrecognised file extension"),
+    };
+    let state = State::new(file)?;
 
     let stdout = std::io::stdout();
     let mut stdout = stdout.lock();
@@ -49,7 +43,7 @@ fn main() -> anyhow::Result<()> {
         .flush()?;
 
     // Store the result so the cleanup happens even if there's an error
-    let result = runloop(&mut stdout, foo);
+    let result = runloop(&mut stdout, state);
 
     // Clean up terminal
     stdout
@@ -63,7 +57,7 @@ fn main() -> anyhow::Result<()> {
 const CHUNK_SIZE: usize = 10_000;
 
 struct State {
-    file: File,
+    file: Box<dyn DataSource>,
     total_rows: usize,
     available_rows: Range<usize>, // The rows in big_df
     big_df: RecordBatch,
@@ -72,49 +66,17 @@ struct State {
     col_idxs: Vec<usize>,
 }
 
-fn count_rows(file: File) -> anyhow::Result<usize> {
-    let start = Instant::now();
-    let rdr = SerializedFileReader::new(file)?;
-    let total_rows = rdr.metadata().file_metadata().num_rows() as usize;
-    eprintln!("Counted {total_rows} rows (took {:?})", start.elapsed());
-    Ok(total_rows)
-}
-
-fn fetch_batch(file: File, offset: usize, len: usize) -> anyhow::Result<RecordBatch> {
-    let start = Instant::now();
-    let mut rdr = parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder::try_new(file)?
-        .with_batch_size(len)
-        .with_row_selection(
-            vec![
-                RowSelector {
-                    row_count: offset,
-                    skip: true,
-                },
-                RowSelector {
-                    row_count: len,
-                    skip: false,
-                },
-            ]
-            .into(),
-        )
-        .build()?;
-    let batch = rdr.next().unwrap()?;
-    eprintln!(
-        "Loaded a new batch: {} MiB (took {:?})",
-        batch.get_array_memory_size() / 1024 / 1024,
-        start.elapsed(),
-    );
-    Ok(batch)
+trait DataSource {
+    fn count_rows(&self) -> anyhow::Result<usize>;
+    fn fetch_batch(&self, offset: usize, len: usize) -> anyhow::Result<RecordBatch>;
 }
 
 impl State {
-    fn new(path: &Path) -> anyhow::Result<Self> {
-        let file = File::open(path)?;
-
-        let total_rows = count_rows(file.try_clone()?)?;
+    fn new(file: Box<dyn DataSource>) -> anyhow::Result<Self> {
+        let total_rows = file.count_rows()?;
         let idx_width = total_rows.ilog10() as u16 + 1;
 
-        let big_df = fetch_batch(file.try_clone()?, 0, CHUNK_SIZE)?;
+        let big_df = file.fetch_batch(0, CHUNK_SIZE)?;
         let n_cols = big_df.num_columns();
 
         let col_stats = big_df
@@ -124,6 +86,16 @@ impl State {
             .zip(big_df.columns())
             .map(|(field, col)| ColumnStats::new(&field.name(), col))
             .collect::<anyhow::Result<Vec<ColumnStats>>>()?;
+
+        // let mut n = 0;
+        // for null_count in lf.clone().null_count().collect()?.get_columns() {
+        //     let n_nulls = null_count.u32()?.get(0).unwrap() as usize;
+        //     if n_nulls == total_rows {
+        //         lf = lf.drop_columns([null_count.name()]);
+        //         n += 1;
+        //     }
+        // }
+        // eprintln!("Hid {n} empty columns");
 
         Ok(State {
             file,
@@ -147,7 +119,7 @@ impl State {
             self.available_rows.contains(&start_row) && self.available_rows.contains(&end_row);
         if !all_rows_available {
             let from = start_row.saturating_sub(CHUNK_SIZE / 2);
-            self.big_df = fetch_batch(self.file.try_clone()?, from, CHUNK_SIZE)?;
+            self.big_df = self.file.fetch_batch(from, CHUNK_SIZE)?;
             self.available_rows = from..(from + CHUNK_SIZE);
             for ((field, old_stats), col) in self
                 .big_df
