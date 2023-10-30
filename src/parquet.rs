@@ -6,27 +6,27 @@ use parquet::file::serialized_reader::SerializedFileReader;
 use std::fs::File;
 use std::time::Instant;
 
-pub struct ParquetFile(File);
+pub struct ParquetFile {
+    file: File,
+    n_rows: usize,
+}
 
 impl ParquetFile {
-    pub fn new(file: File) -> ParquetFile {
-        ParquetFile(file)
+    pub fn new(file: File) -> anyhow::Result<ParquetFile> {
+        // We don't support live-updating parquet files, so we may as well cache
+        // the row count
+        let n_rows = count_rows(&file)?;
+        Ok(ParquetFile { file, n_rows })
     }
 }
 
 impl DataSource for ParquetFile {
-    fn count_rows(&self) -> anyhow::Result<usize> {
-        let start = Instant::now();
-        let file = self.0.try_clone()?;
-        let rdr = SerializedFileReader::new(file)?;
-        let total_rows = rdr.metadata().file_metadata().num_rows() as usize;
-        eprintln!("Counted {total_rows} rows (took {:?})", start.elapsed());
-        Ok(total_rows)
+    fn row_count(&self) -> anyhow::Result<usize> {
+        Ok(self.n_rows)
     }
 
     fn fetch_batch(&self, offset: usize, len: usize) -> anyhow::Result<RecordBatch> {
-        let start = Instant::now();
-        let file = self.0.try_clone()?;
+        let file = self.file.try_clone()?;
         let mut rdr = parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder::try_new(file)?
             .with_batch_size(len)
             .with_row_selection(
@@ -44,11 +44,15 @@ impl DataSource for ParquetFile {
             )
             .build()?;
         let batch = rdr.next().unwrap()?;
-        eprintln!(
-            "Loaded a new batch: {} MiB (took {:?})",
-            batch.get_array_memory_size() / 1024 / 1024,
-            start.elapsed(),
-        );
         Ok(batch)
     }
+}
+
+fn count_rows(file: &File) -> anyhow::Result<usize> {
+    let start = Instant::now();
+    let file = file.try_clone()?;
+    let rdr = SerializedFileReader::new(file)?;
+    let total_rows = rdr.metadata().file_metadata().num_rows() as usize;
+    eprintln!("Counted {total_rows} rows (took {:?})", start.elapsed());
+    Ok(total_rows)
 }

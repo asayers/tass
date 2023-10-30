@@ -3,7 +3,6 @@ use arrow::{
     array::{Array, GenericStringArray, OffsetSizeTrait, PrimitiveArray},
     datatypes::*,
 };
-use std::time::Instant;
 
 #[derive(Debug, Clone)]
 pub struct ColumnStats {
@@ -105,12 +104,6 @@ impl ColumnStats {
         };
         stats.name = name.to_owned();
         stats.width = stats.width.max(name.len() as u16).max(3);
-        eprintln!(
-            "{} :: {} => {stats:?} (took {:?})",
-            name,
-            col.data_type(),
-            start.elapsed()
-        );
         Ok(stats)
     }
 

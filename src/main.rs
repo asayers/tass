@@ -15,6 +15,7 @@ use std::io::Write;
 use std::ops::Range;
 use std::path::PathBuf;
 use std::time::Duration;
+use std::time::Instant;
 
 /// A pager for tabular data
 #[derive(Bpaf)]
@@ -32,11 +33,13 @@ fn main() -> anyhow::Result<()> {
         float_dps: opts.precision,
     };
 
-    let file = match opts.path.extension().and_then(|x| x.to_str()) {
-        Some("parquet") => Box::new(ParquetFile::new(File::open(&opts.path)?)),
+    let file = File::open(&opts.path)?;
+    let ext = opts.path.extension().and_then(|x| x.to_str());
+    let source: Box<dyn DataSource> = match ext {
+        Some("parquet") => Box::new(ParquetFile::new(file)?),
         _ => bail!("Unrecognised file extension"),
     };
-    let state = State::new(file, &settings)?;
+    let source = CachedSource::new(source, &settings)?;
 
     let stdout = std::io::stdout();
     let mut stdout = stdout.lock();
@@ -49,7 +52,7 @@ fn main() -> anyhow::Result<()> {
         .flush()?;
 
     // Store the result so the cleanup happens even if there's an error
-    let result = runloop(&mut stdout, state, settings);
+    let result = runloop(&mut stdout, source, settings);
 
     // Clean up terminal
     stdout
@@ -62,8 +65,8 @@ fn main() -> anyhow::Result<()> {
 
 const CHUNK_SIZE: usize = 10_000;
 
-struct State {
-    file: Box<dyn DataSource>,
+struct CachedSource {
+    inner: Box<dyn DataSource>,
     total_rows: usize,
     available_rows: Range<usize>, // The rows in big_df
     big_df: RecordBatch,
@@ -73,17 +76,23 @@ struct State {
 }
 
 trait DataSource {
-    fn count_rows(&self) -> anyhow::Result<usize>;
+    fn row_count(&self) -> anyhow::Result<usize>;
     fn fetch_batch(&self, offset: usize, len: usize) -> anyhow::Result<RecordBatch>;
 }
 
-impl State {
+impl CachedSource {
     fn new(file: Box<dyn DataSource>, settings: &RenderSettings) -> anyhow::Result<Self> {
-        let total_rows = file.count_rows()?;
+        let total_rows = file.row_count()?;
         let idx_width = total_rows.ilog10() as u16 + 1;
 
+        let start = Instant::now();
         let big_df = file.fetch_batch(0, CHUNK_SIZE)?;
         let n_cols = big_df.num_columns();
+        eprintln!(
+            "Loaded initial batch: {} MiB (took {:?})",
+            big_df.get_array_memory_size() / 1024 / 1024,
+            start.elapsed(),
+        );
 
         let col_stats = big_df
             .schema()
@@ -103,8 +112,8 @@ impl State {
         // }
         // eprintln!("Hid {n} empty columns");
 
-        Ok(State {
-            file,
+        Ok(CachedSource {
+            inner: file,
             total_rows,
             available_rows: 0..CHUNK_SIZE,
             big_df,
@@ -123,8 +132,9 @@ impl State {
         let all_rows_available =
             self.available_rows.contains(&rows.start) && self.available_rows.contains(&rows.end);
         if !all_rows_available {
+            let start = Instant::now();
             let from = rows.start.saturating_sub(CHUNK_SIZE / 2);
-            self.big_df = self.file.fetch_batch(from, CHUNK_SIZE)?;
+            self.big_df = self.inner.fetch_batch(from, CHUNK_SIZE)?;
             self.available_rows = from..(from + CHUNK_SIZE);
             for ((field, old_stats), col) in self
                 .big_df
@@ -137,6 +147,11 @@ impl State {
                 let new_stats = ColumnStats::new(&field.name(), col, settings)?;
                 old_stats.merge(new_stats);
             }
+            eprintln!(
+                "Loaded a new batch: {} MiB (took {:?})",
+                self.big_df.get_array_memory_size() / 1024 / 1024,
+                start.elapsed(),
+            );
         }
         let enabled_cols = &self.col_idxs[cols];
         let offset = rows.start - self.available_rows.start;
@@ -148,7 +163,7 @@ impl State {
 
 fn runloop(
     stdout: &mut impl Write,
-    mut foo: State
+    mut source: CachedSource,
     settings: RenderSettings,
 ) -> anyhow::Result<()> {
     let mut term_size = terminal::size()?;
