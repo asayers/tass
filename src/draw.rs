@@ -246,12 +246,10 @@ where
         use std::fmt::Write;
         write!(&mut buf, "{val}")?;
         // right-align
-        write!(
-            stdout,
-            "{:<w$}",
-            " ",
-            w = (stats.width as usize).saturating_sub(buf.len())
-        )?;
+        let w = (stats.width as usize).saturating_sub(buf.len());
+        if w > 0 {
+            write!(stdout, "{:<w$}", " ", w = w)?;
+        }
         if buf.len() > stats.width as usize {
             buf.truncate(stats.width as usize - 3);
             buf += "...";
@@ -284,12 +282,10 @@ where
         use std::fmt::Write;
         write!(&mut buf, "{val:.prec$}", prec = settings.float_dps)?;
         // right-align
-        write!(
-            stdout,
-            "{:<w$}",
-            " ",
-            w = (stats.width as usize).saturating_sub(buf.len())
-        )?;
+        let w = (stats.width as usize).saturating_sub(buf.len());
+        if w > 0 {
+            write!(stdout, "{:<w$}", " ", w = w)?;
+        }
         if buf.len() > stats.width as usize {
             buf.truncate(stats.width as usize - 3);
             buf += "...";
