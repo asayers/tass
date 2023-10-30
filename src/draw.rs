@@ -17,7 +17,7 @@ pub fn draw(
     stdout: &mut impl Write,
     start_row: usize,
     df: &[ArrayRef],
-    term_size: (u16, u16),
+    term_height: u16,
     idx_width: u16,
     col_stats: &[ColumnStats],
     settings: &RenderSettings,
@@ -43,7 +43,7 @@ pub fn draw(
 
     // Draw tildes for empty rows
     stdout.queue(style::SetForegroundColor(style::Color::Blue))?;
-    for _ in (n_rows as u16)..(term_size.1 - 2) {
+    for _ in (n_rows as u16)..(term_height - 2) {
         stdout.queue(cursor::MoveToNextLine(1))?;
         write!(stdout, "~")?;
     }
@@ -77,13 +77,10 @@ pub fn draw(
     for (col, stats) in df.iter().zip(col_stats) {
         draw_col(stdout, stats, x_baseline, col, settings)?;
         x_baseline += stats.width + 3;
-        if x_baseline >= term_size.0 {
-            break;
-        }
     }
 
     // Draw the prompt
-    stdout.queue(cursor::MoveTo(0, term_size.1))?;
+    stdout.queue(cursor::MoveTo(0, term_height))?;
     write!(stdout, ":")?;
     stdout.flush()?;
     Ok(())

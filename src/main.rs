@@ -114,18 +114,16 @@ impl State {
         })
     }
 
-    fn update_df(
+    fn get_batch(
         &mut self,
-        start_row: usize,
-        start_col: usize,
-        term_size: (u16, u16),
+        rows: Range<usize>,
+        cols: Range<usize>,
         settings: &RenderSettings,
     ) -> anyhow::Result<RecordBatch> {
-        let end_row = (start_row + term_size.1 as usize - 2).min(self.total_rows - 1);
         let all_rows_available =
-            self.available_rows.contains(&start_row) && self.available_rows.contains(&end_row);
+            self.available_rows.contains(&rows.start) && self.available_rows.contains(&rows.end);
         if !all_rows_available {
-            let from = start_row.saturating_sub(CHUNK_SIZE / 2);
+            let from = rows.start.saturating_sub(CHUNK_SIZE / 2);
             self.big_df = self.file.fetch_batch(from, CHUNK_SIZE)?;
             self.available_rows = from..(from + CHUNK_SIZE);
             for ((field, old_stats), col) in self
@@ -140,31 +138,11 @@ impl State {
                 old_stats.merge(new_stats);
             }
         }
-        let enabled_cols = &self.col_idxs[start_col..];
-        let offset = start_row - self.available_rows.start;
-        let len = (term_size.1 as usize - 2).min(self.big_df.num_rows() - offset);
+        let enabled_cols = &self.col_idxs[cols];
+        let offset = rows.start - self.available_rows.start;
+        let len = rows.end - rows.start;
         let mini_df = self.big_df.project(enabled_cols)?.slice(offset, len);
         Ok(mini_df)
-    }
-
-    fn draw(
-        &mut self,
-        stdout: &mut impl Write,
-        start_row: usize,
-        start_col: usize,
-        term_size: (u16, u16),
-        settings: &RenderSettings,
-    ) -> anyhow::Result<()> {
-        let mini_df = self.update_df(start_row, start_col, term_size)?;
-        draw(
-            stdout,
-            start_row,
-            mini_df.columns(),
-            term_size,
-            self.idx_width,
-            &self.col_stats[start_col..],
-            settings,
-        )
     }
 }
 
@@ -178,7 +156,28 @@ fn runloop(
     let mut start_row: usize = 0;
 
     loop {
-        foo.draw(stdout, start_row, start_col, term_size, &settings)?;
+        let end_row = (start_row + term_size.1 as usize - 2).min(source.total_rows - 1);
+        let end_col = source.col_stats[start_col..]
+            .iter()
+            .scan(source.idx_width, |acc, x| {
+                *acc += x.width + 3;
+                Some(*acc)
+            })
+            .position(|x| x > term_size.0)
+            .map(|x| x as usize + start_col + 1)
+            .unwrap_or(source.col_stats.len());
+        // TODO: Reduce the width of the final column
+        let batch = source.get_batch(start_row..end_row, start_col..end_col, &settings)?;
+        draw(
+            stdout,
+            start_row,
+            batch.columns(),
+            term_size.1,
+            source.idx_width,
+            &source.col_stats[start_col..end_col],
+            &settings,
+        )?;
+
         if event::poll(Duration::from_millis(1000))? {
             let event = event::read()?;
             match event {
@@ -214,7 +213,6 @@ fn runloop(
                 event::Event::Resize(cols, rows) => term_size = (cols, rows),
                 _ => (),
             }
-            foo.update_df(start_row, start_col, term_size)?;
         }
     }
 }
