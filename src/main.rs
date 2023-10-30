@@ -21,16 +21,22 @@ use std::time::Duration;
 struct Opts {
     #[bpaf(positional)]
     path: PathBuf,
+    /// How many decimal places to show when rendering floating-point numbers
+    #[bpaf(fallback(5))]
+    precision: usize,
 }
 
 fn main() -> anyhow::Result<()> {
     let opts = opts().run();
+    let settings = RenderSettings {
+        float_dps: opts.precision,
+    };
 
     let file = match opts.path.extension().and_then(|x| x.to_str()) {
         Some("parquet") => Box::new(ParquetFile::new(File::open(&opts.path)?)),
         _ => bail!("Unrecognised file extension"),
     };
-    let state = State::new(file)?;
+    let state = State::new(file, &settings)?;
 
     let stdout = std::io::stdout();
     let mut stdout = stdout.lock();
@@ -43,7 +49,7 @@ fn main() -> anyhow::Result<()> {
         .flush()?;
 
     // Store the result so the cleanup happens even if there's an error
-    let result = runloop(&mut stdout, state);
+    let result = runloop(&mut stdout, state, settings);
 
     // Clean up terminal
     stdout
@@ -72,7 +78,7 @@ trait DataSource {
 }
 
 impl State {
-    fn new(file: Box<dyn DataSource>) -> anyhow::Result<Self> {
+    fn new(file: Box<dyn DataSource>, settings: &RenderSettings) -> anyhow::Result<Self> {
         let total_rows = file.count_rows()?;
         let idx_width = total_rows.ilog10() as u16 + 1;
 
@@ -84,7 +90,7 @@ impl State {
             .fields()
             .iter()
             .zip(big_df.columns())
-            .map(|(field, col)| ColumnStats::new(&field.name(), col))
+            .map(|(field, col)| ColumnStats::new(&field.name(), col, settings))
             .collect::<anyhow::Result<Vec<ColumnStats>>>()?;
 
         // let mut n = 0;
@@ -113,6 +119,7 @@ impl State {
         start_row: usize,
         start_col: usize,
         term_size: (u16, u16),
+        settings: &RenderSettings,
     ) -> anyhow::Result<RecordBatch> {
         let end_row = (start_row + term_size.1 as usize - 2).min(self.total_rows - 1);
         let all_rows_available =
@@ -129,7 +136,7 @@ impl State {
                 .zip(self.col_stats.iter_mut())
                 .zip(self.big_df.columns())
             {
-                let new_stats = ColumnStats::new(&field.name(), col)?;
+                let new_stats = ColumnStats::new(&field.name(), col, settings)?;
                 old_stats.merge(new_stats);
             }
         }
@@ -146,6 +153,7 @@ impl State {
         start_row: usize,
         start_col: usize,
         term_size: (u16, u16),
+        settings: &RenderSettings,
     ) -> anyhow::Result<()> {
         let mini_df = self.update_df(start_row, start_col, term_size)?;
         draw(
@@ -155,17 +163,22 @@ impl State {
             term_size,
             self.idx_width,
             &self.col_stats[start_col..],
+            settings,
         )
     }
 }
 
-fn runloop(stdout: &mut impl Write, mut foo: State) -> anyhow::Result<()> {
+fn runloop(
+    stdout: &mut impl Write,
+    mut foo: State
+    settings: RenderSettings,
+) -> anyhow::Result<()> {
     let mut term_size = terminal::size()?;
     let mut start_col: usize = 0;
     let mut start_row: usize = 0;
 
     loop {
-        foo.draw(stdout, start_row, start_col, term_size)?;
+        foo.draw(stdout, start_row, start_col, term_size, &settings)?;
         if event::poll(Duration::from_millis(1000))? {
             let event = event::read()?;
             match event {

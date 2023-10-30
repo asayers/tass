@@ -1,4 +1,4 @@
-use crate::draw::FLOAT_DPS;
+use crate::draw::RenderSettings;
 use arrow::{
     array::{Array, GenericStringArray, OffsetSizeTrait, PrimitiveArray},
     datatypes::*,
@@ -42,29 +42,32 @@ impl ColumnStats {
     }
 }
 
-macro_rules! downcast_col {
-    ($col:expr) => {
-        $col.as_any().downcast_ref().unwrap()
-    };
-}
-
 impl ColumnStats {
-    pub fn new(name: &str, col: &dyn Array) -> anyhow::Result<ColumnStats> {
-        let start = Instant::now();
+    pub fn new(
+        name: &str,
+        col: &dyn Array,
+        settings: &RenderSettings,
+    ) -> anyhow::Result<ColumnStats> {
+        macro_rules! col {
+            () => {
+                col.as_any().downcast_ref().unwrap()
+            };
+        }
+
         let mut stats = match col.data_type() {
-            DataType::UInt8 => ColumnStats::new_integral::<UInt8Type>(downcast_col!(col))?,
-            DataType::UInt16 => ColumnStats::new_integral::<UInt16Type>(downcast_col!(col))?,
-            DataType::UInt32 => ColumnStats::new_integral::<UInt32Type>(downcast_col!(col))?,
-            DataType::UInt64 => ColumnStats::new_integral::<UInt64Type>(downcast_col!(col))?,
-            DataType::Int8 => ColumnStats::new_integral::<Int8Type>(downcast_col!(col))?,
-            DataType::Int16 => ColumnStats::new_integral::<Int16Type>(downcast_col!(col))?,
-            DataType::Int32 => ColumnStats::new_integral::<Int32Type>(downcast_col!(col))?,
-            DataType::Int64 => ColumnStats::new_integral::<Int64Type>(downcast_col!(col))?,
-            DataType::Float16 => ColumnStats::new_floating::<Float16Type>(downcast_col!(col))?,
-            DataType::Float32 => ColumnStats::new_floating::<Float32Type>(downcast_col!(col))?,
-            DataType::Float64 => ColumnStats::new_floating::<Float64Type>(downcast_col!(col))?,
-            DataType::Utf8 => ColumnStats::new_string::<i32>(downcast_col!(col))?,
-            DataType::LargeUtf8 => ColumnStats::new_string::<i64>(downcast_col!(col))?,
+            DataType::UInt8 => ColumnStats::new_integral::<UInt8Type>(col!())?,
+            DataType::UInt16 => ColumnStats::new_integral::<UInt16Type>(col!())?,
+            DataType::UInt32 => ColumnStats::new_integral::<UInt32Type>(col!())?,
+            DataType::UInt64 => ColumnStats::new_integral::<UInt64Type>(col!())?,
+            DataType::Int8 => ColumnStats::new_integral::<Int8Type>(col!())?,
+            DataType::Int16 => ColumnStats::new_integral::<Int16Type>(col!())?,
+            DataType::Int32 => ColumnStats::new_integral::<Int32Type>(col!())?,
+            DataType::Int64 => ColumnStats::new_integral::<Int64Type>(col!())?,
+            DataType::Float16 => ColumnStats::new_floating::<Float16Type>(col!(), settings)?,
+            DataType::Float32 => ColumnStats::new_floating::<Float32Type>(col!(), settings)?,
+            DataType::Float64 => ColumnStats::new_floating::<Float64Type>(col!(), settings)?,
+            DataType::Utf8 => ColumnStats::new_string::<i32>(col!())?,
+            DataType::LargeUtf8 => ColumnStats::new_string::<i64>(col!())?,
             DataType::Null => ColumnStats::fixed_len(0),
             DataType::Boolean => ColumnStats::fixed_len(5), // "false"
             DataType::Date32 | DataType::Date64 => ColumnStats::fixed_len(10), // YYYY-MM-DD
@@ -141,14 +144,17 @@ impl ColumnStats {
         })
     }
 
-    fn new_floating<T: ArrowNumericType>(col: &PrimitiveArray<T>) -> anyhow::Result<ColumnStats>
+    fn new_floating<T: ArrowNumericType>(
+        col: &PrimitiveArray<T>,
+        settings: &RenderSettings,
+    ) -> anyhow::Result<ColumnStats>
     where
         T::Native: Into<f64>,
     {
         let min: Option<f64> = arrow::compute::min(col).map(|x| x.into());
         let max: Option<f64> = arrow::compute::max(col).map(|x| x.into());
         let len = |x: f64| -> u16 {
-            2 + FLOAT_DPS as u16
+            2 + settings.float_dps as u16
                 + if x == 0.0 {
                     0
                 } else {
@@ -176,10 +182,12 @@ impl ColumnStats {
         let lens = arrow::compute::kernels::length::length(col)?;
         let max_len = match lens.data_type() {
             DataType::Int32 => {
-                arrow::compute::max::<Int32Type>(downcast_col!(lens)).unwrap_or(0) as u16
+                arrow::compute::max::<Int32Type>(lens.as_any().downcast_ref().unwrap()).unwrap_or(0)
+                    as u16
             }
             DataType::Int64 => {
-                arrow::compute::max::<Int64Type>(downcast_col!(lens)).unwrap_or(0) as u16
+                arrow::compute::max::<Int64Type>(lens.as_any().downcast_ref().unwrap()).unwrap_or(0)
+                    as u16
             }
             _ => unreachable!(),
         };
