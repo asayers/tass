@@ -5,8 +5,10 @@ edition = "2021"
 
 [dependencies]
 anyhow = { version = "1.0.75", features = ["backtrace"] }
-arrow = "48.0.0"
+arrow = { version = "48.0.0", features = ["chrono-tz"] }
 bpaf = { version = "0.9.5", features = ["derive"] }
+chrono = "0.4.31"
+chrono-tz = "0.8.4"
 crossterm = "0.27.0"
 hsl = "0.1.1"
 parquet = "48.0.0"

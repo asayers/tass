@@ -4,6 +4,8 @@ use arrow::{
     datatypes::*,
     temporal_conversions,
 };
+use chrono::TimeZone;
+use chrono_tz::Tz;
 use crossterm::*;
 use std::{fmt::Display, io::Write};
 
@@ -122,7 +124,44 @@ fn draw_col(
         DataType::Float64 => {
             draw_float_col::<Float64Type>(stdout, stats, x_baseline, col!(), settings)
         }
-        DataType::Timestamp(_, _) => unimpl(stdout, x_baseline, "Timestamp"),
+        DataType::Timestamp(TimeUnit::Second, tz) => draw_timestamp_col::<TimestampSecondType>(
+            stdout,
+            stats,
+            x_baseline,
+            col!(),
+            settings,
+            tz.as_deref(),
+        ),
+        DataType::Timestamp(TimeUnit::Millisecond, tz) => {
+            draw_timestamp_col::<TimestampMillisecondType>(
+                stdout,
+                stats,
+                x_baseline,
+                col!(),
+                settings,
+                tz.as_deref(),
+            )
+        }
+        DataType::Timestamp(TimeUnit::Microsecond, tz) => {
+            draw_timestamp_col::<TimestampMicrosecondType>(
+                stdout,
+                stats,
+                x_baseline,
+                col!(),
+                settings,
+                tz.as_deref(),
+            )
+        }
+        DataType::Timestamp(TimeUnit::Nanosecond, tz) => {
+            draw_timestamp_col::<TimestampNanosecondType>(
+                stdout,
+                stats,
+                x_baseline,
+                col!(),
+                settings,
+                tz.as_deref(),
+            )
+        }
         DataType::Date32 => {
             draw_date_col::<Date32Type>(stdout, stats, x_baseline, col!(), settings)
         }
@@ -296,6 +335,45 @@ where
     Ok(())
 }
 
+fn draw_timestamp_col<T: ArrowPrimitiveType>(
+    stdout: &mut impl Write,
+    stats: &ColumnStats,
+    x_baseline: u16,
+    col: &PrimitiveArray<T>,
+    _settings: &RenderSettings,
+    tz: Option<&str>,
+) -> anyhow::Result<()>
+where
+    T::Native: Into<i64>,
+{
+    let mut buf = String::new();
+    for (row, val) in col.iter().enumerate() {
+        let Some(val) = val else { continue };
+        stdout.queue(cursor::MoveTo(
+            x_baseline + 2,
+            u16::try_from(row + 1).unwrap(),
+        ))?;
+        buf.clear();
+        use std::fmt::Write;
+        let datetime = temporal_conversions::as_datetime::<T>(val.into()).unwrap();
+        if let Some(tz) = tz {
+            let tz: Tz = tz.parse().unwrap();
+            let datetime = tz.from_utc_datetime(&datetime);
+            eprintln!("{:?} {}", datetime, tz);
+            write!(&mut buf, "{datetime}")?;
+        } else {
+            write!(&mut buf, "{datetime}")?;
+        }
+        if buf.len() > stats.width as usize {
+            buf.truncate(stats.width as usize - 3);
+            buf += "...";
+        }
+        stdout.write_all(buf.as_bytes())?;
+    }
+
+    Ok(())
+}
+
 fn draw_date_col<T: ArrowPrimitiveType>(
     stdout: &mut impl Write,
     stats: &ColumnStats,
@@ -347,8 +425,8 @@ where
         ))?;
         buf.clear();
         use std::fmt::Write;
-        let date = temporal_conversions::as_time::<T>(val.into()).unwrap();
-        write!(&mut buf, "{date}")?;
+        let time = temporal_conversions::as_time::<T>(val.into()).unwrap();
+        write!(&mut buf, "{time}")?;
         if buf.len() > stats.width as usize {
             buf.truncate(stats.width as usize - 3);
             buf += "...";
