@@ -203,25 +203,28 @@ fn runloop(
                         return Ok(())
                     }
                     event::KeyCode::Esc | event::KeyCode::Char('q') => return Ok(()),
-                    event::KeyCode::Right | event::KeyCode::Char('l') => start_col += 1,
+                    event::KeyCode::Right | event::KeyCode::Char('l') => {
+                        start_col = (start_col + 1).min(source.col_stats.len() - 1)
+                    }
                     event::KeyCode::Left | event::KeyCode::Char('h') => {
                         start_col = start_col.saturating_sub(1)
                     }
                     event::KeyCode::Down | event::KeyCode::Char('j') => {
-                        start_row = (start_row + 1).min(foo.total_rows - 1)
+                        start_row = (start_row + 1).min(source.total_rows - 2)
                     }
                     event::KeyCode::Up | event::KeyCode::Char('k') => {
                         start_row = start_row.saturating_sub(1)
                     }
                     event::KeyCode::End | event::KeyCode::Char('G') => {
-                        start_row = foo.total_rows - 1
+                        start_row = source.total_rows - 2
                     }
                     event::KeyCode::Home | event::KeyCode::Char('g') => start_row = 0,
                     event::KeyCode::PageUp => {
                         start_row = start_row.saturating_sub(term_size.1 as usize - 2)
                     }
                     event::KeyCode::PageDown => {
-                        start_row = (start_row + term_size.1 as usize - 2).min(foo.total_rows - 1)
+                        start_row =
+                            (start_row + term_size.1 as usize - 2).min(source.total_rows - 2)
                     }
                     _ => (),
                 },
