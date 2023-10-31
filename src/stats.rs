@@ -6,7 +6,6 @@ use arrow::{
 
 #[derive(Debug, Clone)]
 pub struct ColumnStats {
-    pub name: String,
     pub min_max: Option<MinMax>,
     /// The length (in chars) of the longest value, when formatted (including the header)
     pub width: u16,
@@ -21,7 +20,6 @@ pub struct MinMax {
 
 impl ColumnStats {
     pub fn merge(&mut self, other: ColumnStats) {
-        assert_eq!(self.name, other.name);
         self.min_max = self
             .min_max
             .zip(other.min_max)
@@ -112,7 +110,6 @@ impl ColumnStats {
             DataType::Union(_, _) => ColumnStats::fixed_len(15),
             DataType::RunEndEncoded(_, _) => ColumnStats::fixed_len(15),
         };
-        stats.name = name.to_owned();
         stats.width = stats.width.max(name.len() as u16).max(3);
         Ok(stats)
     }
@@ -137,7 +134,6 @@ impl ColumnStats {
             .max()
             .unwrap_or(0);
         Ok(ColumnStats {
-            name: String::new(),
             min_max: min.zip(max).map(|(min, max)| MinMax {
                 min: min as f64,
                 max: max as f64,
@@ -171,7 +167,6 @@ impl ColumnStats {
             .max()
             .unwrap_or(0);
         Ok(ColumnStats {
-            name: String::new(),
             min_max: min.zip(max).map(|(min, max)| MinMax {
                 min: min as f64,
                 max: max as f64,
@@ -199,7 +194,6 @@ impl ColumnStats {
         let unique_vals: std::collections::HashSet<&str> = col.iter().flatten().collect();
 
         Ok(ColumnStats {
-            name: String::new(),
             min_max: None,
             width: max_len,
             cardinality: Some(unique_vals.len() as u16).filter(|x| *x < 100),
@@ -208,7 +202,6 @@ impl ColumnStats {
 
     fn fixed_len(max_len: u16) -> ColumnStats {
         ColumnStats {
-            name: String::new(),
             width: max_len,
             min_max: None,
             cardinality: None,

@@ -189,7 +189,7 @@ fn runloop(
         draw(
             stdout,
             start_row,
-            batch.columns(),
+            batch,
             term_size.1,
             source.idx_width,
             &source.col_stats[start_col..end_col],

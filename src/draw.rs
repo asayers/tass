@@ -1,7 +1,8 @@
 use crate::stats::*;
 use arrow::{
-    array::{Array, ArrayRef, GenericStringArray, OffsetSizeTrait, PrimitiveArray},
+    array::{Array, GenericStringArray, OffsetSizeTrait, PrimitiveArray},
     datatypes::*,
+    record_batch::RecordBatch,
     temporal_conversions,
 };
 use chrono::TimeZone;
@@ -16,7 +17,7 @@ pub struct RenderSettings {
 pub fn draw(
     stdout: &mut impl Write,
     start_row: usize,
-    df: &[ArrayRef],
+    df: RecordBatch,
     term_height: u16,
     idx_width: u16,
     col_stats: &[ColumnStats],
@@ -34,8 +35,7 @@ pub fn draw(
 
     // Draw the index column
     stdout.queue(style::SetAttribute(style::Attribute::Dim))?;
-    let n_rows = df.get(0).map(|x| x.len()).unwrap_or(0);
-    for x in start_row..(start_row + n_rows) {
+    for x in start_row..(start_row + df.num_rows()) {
         stdout.queue(cursor::MoveToNextLine(1))?;
         write!(stdout, "{}", x + 1)?;
     }
@@ -43,7 +43,7 @@ pub fn draw(
 
     // Draw tildes for empty rows
     stdout.queue(style::SetForegroundColor(style::Color::Blue))?;
-    for _ in (n_rows as u16)..(term_height - 2) {
+    for _ in (df.num_rows() as u16)..(term_height - 2) {
         stdout.queue(cursor::MoveToNextLine(1))?;
         write!(stdout, "~")?;
     }
@@ -54,8 +54,8 @@ pub fn draw(
         .queue(cursor::MoveTo(idx_width, 0))?
         .queue(style::SetAttribute(style::Attribute::Underlined))?
         .queue(style::SetAttribute(style::Attribute::Bold))?;
-    for stats in col_stats {
-        write!(stdout, "│ {:^w$} ", stats.name, w = stats.width as usize)?;
+    for (field, stats) in df.schema().fields.iter().zip(col_stats) {
+        write!(stdout, "│ {:^w$} ", field.name(), w = stats.width as usize)?;
     }
     stdout.queue(style::SetAttribute(style::Attribute::Reset))?;
 
@@ -63,7 +63,7 @@ pub fn draw(
     let mut x_baseline = idx_width;
     stdout.queue(style::SetAttribute(style::Attribute::Dim))?;
     for stats in col_stats {
-        for row in 0..n_rows {
+        for row in 0..df.num_rows() {
             stdout
                 .queue(cursor::MoveTo(x_baseline, u16::try_from(row + 1).unwrap()))?
                 .queue(style::Print("│"))?;
@@ -74,7 +74,7 @@ pub fn draw(
 
     // Draw the column data
     let mut x_baseline = idx_width;
-    for (col, stats) in df.iter().zip(col_stats) {
+    for (col, stats) in df.columns().iter().zip(col_stats) {
         draw_col(stdout, stats, x_baseline, col, settings)?;
         x_baseline += stats.width + 3;
     }
