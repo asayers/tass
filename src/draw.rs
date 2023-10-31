@@ -1,3 +1,4 @@
+use crate::prompt::Prompt;
 use crate::stats::*;
 use arrow::{
     array::{Array, GenericStringArray, OffsetSizeTrait, PrimitiveArray},
@@ -22,6 +23,7 @@ pub fn draw(
     idx_width: u16,
     col_stats: &[ColumnStats],
     settings: &RenderSettings,
+    prompt: &Prompt,
 ) -> anyhow::Result<()> {
     stdout.queue(terminal::Clear(terminal::ClearType::All))?;
 
@@ -81,7 +83,8 @@ pub fn draw(
 
     // Draw the prompt
     stdout.queue(cursor::MoveTo(0, term_height))?;
-    write!(stdout, ":")?;
+    prompt.draw(stdout)?;
+
     stdout.flush()?;
     Ok(())
 }

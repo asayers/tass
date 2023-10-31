@@ -1,11 +1,13 @@
 mod csv;
 mod draw;
 mod parquet;
+mod prompt;
 mod stats;
 
 use crate::csv::*;
 use crate::draw::*;
 use crate::parquet::*;
+use crate::prompt::*;
 use crate::stats::*;
 use anyhow::bail;
 use anyhow::Context;
@@ -172,6 +174,7 @@ fn runloop(
     let mut term_size = terminal::size()?;
     let mut start_col: usize = 0;
     let mut start_row: usize = 0;
+    let mut prompt = Prompt::default();
 
     loop {
         let end_row = (start_row + term_size.1 as usize - 2).min(source.total_rows - 1);
@@ -194,43 +197,43 @@ fn runloop(
             source.idx_width,
             &source.col_stats[start_col..end_col],
             &settings,
+            &prompt,
         )?;
 
         if event::poll(Duration::from_millis(1000))? {
             let event = event::read()?;
             match event {
-                event::Event::Key(k) => match k.code {
-                    event::KeyCode::Char('c')
-                        if k.modifiers.contains(event::KeyModifiers::CONTROL) =>
-                    {
-                        return Ok(())
+                event::Event::Key(k) => {
+                    let cmd = match k.code {
+                        event::KeyCode::Char('c')
+                            if k.modifiers.contains(event::KeyModifiers::CONTROL) =>
+                        {
+                            return Ok(())
+                        }
+                        code => prompt.handle(code),
+                    };
+                    if let Some(cmd) = cmd {
+                        match cmd {
+                            Cmd::ColRight => {
+                                start_col = (start_col + 1).min(source.col_stats.len() - 1)
+                            }
+                            Cmd::ColLeft => start_col = start_col.saturating_sub(1),
+                            Cmd::RowDown => start_row = (start_row + 1).min(source.total_rows - 2),
+                            Cmd::RowUp => start_row = start_row.saturating_sub(1),
+                            Cmd::RowBottom => start_row = source.total_rows - 2,
+                            Cmd::RowTop => start_row = 0,
+                            Cmd::RowPgUp => {
+                                start_row = start_row.saturating_sub(term_size.1 as usize - 2)
+                            }
+                            Cmd::RowPgDown => {
+                                start_row = (start_row + term_size.1 as usize - 2)
+                                    .min(source.total_rows - 2)
+                            }
+                            Cmd::RowGoTo(x) => start_row = x.min(source.total_rows - 2),
+                            Cmd::Exit => return Ok(()),
+                        }
                     }
-                    event::KeyCode::Esc | event::KeyCode::Char('q') => return Ok(()),
-                    event::KeyCode::Right | event::KeyCode::Char('l') => {
-                        start_col = (start_col + 1).min(source.col_stats.len() - 1)
-                    }
-                    event::KeyCode::Left | event::KeyCode::Char('h') => {
-                        start_col = start_col.saturating_sub(1)
-                    }
-                    event::KeyCode::Down | event::KeyCode::Char('j') => {
-                        start_row = (start_row + 1).min(source.total_rows - 2)
-                    }
-                    event::KeyCode::Up | event::KeyCode::Char('k') => {
-                        start_row = start_row.saturating_sub(1)
-                    }
-                    event::KeyCode::End | event::KeyCode::Char('G') => {
-                        start_row = source.total_rows - 2
-                    }
-                    event::KeyCode::Home | event::KeyCode::Char('g') => start_row = 0,
-                    event::KeyCode::PageUp => {
-                        start_row = start_row.saturating_sub(term_size.1 as usize - 2)
-                    }
-                    event::KeyCode::PageDown => {
-                        start_row =
-                            (start_row + term_size.1 as usize - 2).min(source.total_rows - 2)
-                    }
-                    _ => (),
-                },
+                }
                 event::Event::Resize(cols, rows) => term_size = (cols, rows),
                 _ => (),
             }
