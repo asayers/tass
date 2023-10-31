@@ -927,6 +927,7 @@ dependencies = [
  "chrono-tz",
  "crossterm",
  "hsl",
+ "memchr",
  "parquet",
 ]
 

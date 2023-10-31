@@ -1,11 +1,11 @@
 use crate::DataSource;
-use anyhow::anyhow;
+use anyhow::bail;
 use arrow::csv::reader::Format;
 use arrow::csv::ReaderBuilder;
 use arrow::datatypes::Schema;
 use arrow::record_batch::RecordBatch;
 use std::fs::File;
-use std::io::{Seek, SeekFrom};
+use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -54,7 +54,23 @@ impl DataSource for CsvFile {
         Ok(batch)
     }
 
-    fn search(&self, _needle: &str, _from: usize, _rev: bool) -> anyhow::Result<Option<usize>> {
-        Err(anyhow!("Searching CSV not supported yet"))
+    fn search(&self, needle: &str, from: usize, rev: bool) -> anyhow::Result<Option<usize>> {
+        if rev {
+            bail!("Reverse-searching CSV not supported yet");
+        }
+        let mut file = self.file.try_clone()?;
+        file.seek(SeekFrom::Start(0))?;
+        // FIXME: Not all newlines are new rows in CSV
+        for (row, txt) in BufReader::new(&mut file)
+            .lines()
+            .enumerate()
+            .skip(from + 1 /* header */ + 1 /* current_row */)
+        {
+            let txt = txt?;
+            if memchr::memmem::find(txt.as_bytes(), needle.as_bytes()).is_some() {
+                return Ok(Some(row - 1));
+            }
+        }
+        Ok(None)
     }
 }
