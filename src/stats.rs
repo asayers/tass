@@ -54,6 +54,9 @@ impl ColumnStats {
         }
 
         let mut stats = match col.data_type() {
+            DataType::Null => ColumnStats::fixed_len(0),
+            DataType::Boolean => ColumnStats::fixed_len(5), // "false"
+
             DataType::UInt8 => ColumnStats::new_integral::<UInt8Type>(col!())?,
             DataType::UInt16 => ColumnStats::new_integral::<UInt16Type>(col!())?,
             DataType::UInt32 => ColumnStats::new_integral::<UInt32Type>(col!())?,
@@ -62,13 +65,20 @@ impl ColumnStats {
             DataType::Int16 => ColumnStats::new_integral::<Int16Type>(col!())?,
             DataType::Int32 => ColumnStats::new_integral::<Int32Type>(col!())?,
             DataType::Int64 => ColumnStats::new_integral::<Int64Type>(col!())?,
+
             DataType::Float16 => ColumnStats::new_floating::<Float16Type>(col!(), settings)?,
             DataType::Float32 => ColumnStats::new_floating::<Float32Type>(col!(), settings)?,
             DataType::Float64 => ColumnStats::new_floating::<Float64Type>(col!(), settings)?,
+            DataType::Decimal128(_, _) => ColumnStats::fixed_len(15), // TODO
+            DataType::Decimal256(_, _) => ColumnStats::fixed_len(15), // TODO
+
             DataType::Utf8 => ColumnStats::new_string::<i32>(col!())?,
             DataType::LargeUtf8 => ColumnStats::new_string::<i64>(col!())?,
-            DataType::Null => ColumnStats::fixed_len(0),
-            DataType::Boolean => ColumnStats::fixed_len(5), // "false"
+            DataType::Binary => ColumnStats::fixed_len(15), // TODO
+            DataType::FixedSizeBinary(_) => ColumnStats::fixed_len(15), // TODO
+            DataType::LargeBinary => ColumnStats::fixed_len(15), // TODO
+            DataType::Dictionary(_, _) => ColumnStats::fixed_len(15), // TODO
+
             DataType::Date32 | DataType::Date64 => ColumnStats::fixed_len(10), // YYYY-MM-DD
             DataType::Time32(unit) | DataType::Time64(unit) => ColumnStats::fixed_len(match unit {
                 TimeUnit::Second => 8,              // HH:MM:SS
@@ -87,20 +97,20 @@ impl ColumnStats {
                     .map(|tz| tz.to_string().len() as u16)
                     .unwrap_or(0),
             ),
-            DataType::Struct(_) | DataType::Binary | DataType::Duration(_) | DataType::List(_) => {
-                todo!()
-            }
-            DataType::Interval(_) => todo!(),
-            DataType::FixedSizeBinary(_) => todo!(),
-            DataType::LargeBinary => todo!(),
-            DataType::FixedSizeList(_, _) => todo!(),
-            DataType::LargeList(_) => todo!(),
-            DataType::Union(_, _) => todo!(),
-            DataType::Dictionary(_, _) => todo!(),
-            DataType::Decimal128(_, _) => todo!(),
-            DataType::Decimal256(_, _) => todo!(),
-            DataType::Map(_, _) => todo!(),
-            DataType::RunEndEncoded(_, _) => todo!(),
+            DataType::Duration(_) => ColumnStats::fixed_len(15), // TODO
+            DataType::Interval(_) => ColumnStats::fixed_len(15), // TODO
+
+            // TODO:
+            DataType::Struct(_) => ColumnStats::fixed_len(15),
+            DataType::Map(_, _) => ColumnStats::fixed_len(15),
+
+            // TODO:
+            DataType::List(_) => ColumnStats::fixed_len(15),
+            DataType::FixedSizeList(_, _) => ColumnStats::fixed_len(15),
+            DataType::LargeList(_) => ColumnStats::fixed_len(15),
+
+            DataType::Union(_, _) => ColumnStats::fixed_len(15),
+            DataType::RunEndEncoded(_, _) => ColumnStats::fixed_len(15),
         };
         stats.name = name.to_owned();
         stats.width = stats.width.max(name.len() as u16).max(3);
