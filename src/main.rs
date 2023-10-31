@@ -83,6 +83,7 @@ struct CachedSource {
 trait DataSource {
     fn row_count(&self) -> anyhow::Result<usize>;
     fn fetch_batch(&self, offset: usize, len: usize) -> anyhow::Result<RecordBatch>;
+    fn search(&self, needle: &str, from: usize, rev: bool) -> anyhow::Result<Option<usize>>;
 }
 
 impl CachedSource {
@@ -230,6 +231,16 @@ fn runloop(
                                     .min(source.total_rows - 2)
                             }
                             Cmd::RowGoTo(x) => start_row = x.min(source.total_rows - 2),
+                            Cmd::SearchNext(needle) => {
+                                if let Some(x) = source.inner.search(&needle, start_row, false)? {
+                                    start_row = x;
+                                }
+                            }
+                            Cmd::SearchPrev(needle) => {
+                                if let Some(x) = source.inner.search(&needle, start_row, true)? {
+                                    start_row = x;
+                                }
+                            }
                             Cmd::Exit => return Ok(()),
                         }
                     }

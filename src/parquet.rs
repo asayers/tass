@@ -1,4 +1,5 @@
 use crate::DataSource;
+use anyhow::anyhow;
 use arrow::record_batch::RecordBatch;
 use parquet::arrow::arrow_reader::RowSelector;
 use parquet::file::reader::FileReader;
@@ -45,6 +46,10 @@ impl DataSource for ParquetFile {
             .build()?;
         let batch = rdr.next().unwrap()?;
         Ok(batch)
+    }
+
+    fn search(&self, _needle: &str, _from: usize, _rev: bool) -> anyhow::Result<Option<usize>> {
+        Err(anyhow!("Searching parquet not supported yet"))
     }
 }
 

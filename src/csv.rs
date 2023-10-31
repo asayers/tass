@@ -1,4 +1,5 @@
 use crate::DataSource;
+use anyhow::anyhow;
 use arrow::csv::reader::Format;
 use arrow::csv::ReaderBuilder;
 use arrow::datatypes::Schema;
@@ -51,5 +52,9 @@ impl DataSource for CsvFile {
             .build(file)?;
         let batch = rdr.next().unwrap()?;
         Ok(batch)
+    }
+
+    fn search(&self, _needle: &str, _from: usize, _rev: bool) -> anyhow::Result<Option<usize>> {
+        Err(anyhow!("Searching CSV not supported yet"))
     }
 }
