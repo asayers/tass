@@ -13,8 +13,10 @@ use anyhow::bail;
 use anyhow::Context;
 use arrow::record_batch::RecordBatch;
 use bpaf::{Bpaf, Parser};
+use crossterm::tty::IsTty;
 use crossterm::*;
 use std::fs::File;
+use std::io::LineWriter;
 use std::io::Write;
 use std::ops::Range;
 use std::path::PathBuf;
@@ -25,7 +27,7 @@ use std::time::Instant;
 #[derive(Bpaf)]
 struct Opts {
     #[bpaf(positional)]
-    path: PathBuf,
+    path: Option<PathBuf>,
     /// How many decimal places to show when rendering floating-point numbers
     #[bpaf(fallback(5))]
     precision: usize,
@@ -37,11 +39,23 @@ fn main() -> anyhow::Result<()> {
         float_dps: opts.precision,
     };
 
-    let file = File::open(&opts.path)?;
-    let ext = opts.path.extension().and_then(|x| x.to_str());
+    let (file, ext) = match &opts.path {
+        Some(x) => (File::open(x)?, x.extension().and_then(|x| x.to_str())),
+        None => {
+            let mut stdin = std::io::stdin();
+            if stdin.is_tty() {
+                bail!("Need to specify a filename or feed data to stdin");
+            }
+            let tmpfile = tempfile::tempfile()?;
+            let mut wtr = LineWriter::new(tmpfile.try_clone()?);
+            std::thread::spawn(move || std::io::copy(&mut stdin, &mut wtr));
+            (tmpfile, None)
+        }
+    };
     let source: Box<dyn DataSource> = match ext {
         Some("parquet") => Box::new(ParquetFile::new(file)?),
         Some("csv") => Box::new(CsvFile::new(file)?),
+        None => Box::new(CsvFile::new(file)?),
         _ => bail!("Unrecognised file extension"),
     };
     let source = CachedSource::new(source, &settings)?;
