@@ -216,21 +216,24 @@ fn runloop(
                     if let Some(cmd) = cmd {
                         match cmd {
                             Cmd::ColRight => {
-                                start_col = (start_col + 1).min(source.col_stats.len() - 1)
+                                start_col =
+                                    (start_col + 1).min(source.col_stats.len().saturating_sub(1))
                             }
                             Cmd::ColLeft => start_col = start_col.saturating_sub(1),
-                            Cmd::RowDown => start_row = (start_row + 1).min(source.total_rows - 2),
+                            Cmd::RowDown => {
+                                start_row = (start_row + 1).min(total_rows.saturating_sub(2))
+                            }
                             Cmd::RowUp => start_row = start_row.saturating_sub(1),
-                            Cmd::RowBottom => start_row = source.total_rows - 2,
+                            Cmd::RowBottom => start_row = total_rows.saturating_sub(2),
                             Cmd::RowTop => start_row = 0,
                             Cmd::RowPgUp => {
                                 start_row = start_row.saturating_sub(term_size.1 as usize - 2)
                             }
                             Cmd::RowPgDown => {
                                 start_row = (start_row + term_size.1 as usize - 2)
-                                    .min(source.total_rows - 2)
+                                    .min(total_rows.saturating_sub(2))
                             }
-                            Cmd::RowGoTo(x) => start_row = x.min(source.total_rows - 2),
+                            Cmd::RowGoTo(x) => start_row = x.min(total_rows.saturating_sub(2)),
                             Cmd::SearchNext(needle) => {
                                 if let Some(x) = source.inner.search(&needle, start_row, false)? {
                                     start_row = x;
