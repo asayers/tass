@@ -93,13 +93,13 @@ struct CachedSource {
 }
 
 trait DataSource {
-    fn row_count(&self) -> anyhow::Result<usize>;
-    fn fetch_batch(&self, offset: usize, len: usize) -> anyhow::Result<RecordBatch>;
-    fn search(&self, needle: &str, from: usize, rev: bool) -> anyhow::Result<Option<usize>>;
+    fn row_count(&mut self) -> anyhow::Result<usize>;
+    fn fetch_batch(&mut self, offset: usize, len: usize) -> anyhow::Result<RecordBatch>;
+    fn search(&mut self, needle: &str, from: usize, rev: bool) -> anyhow::Result<Option<usize>>;
 }
 
 impl CachedSource {
-    fn new(source: Box<dyn DataSource>, settings: &RenderSettings) -> anyhow::Result<Self> {
+    fn new(mut source: Box<dyn DataSource>, settings: &RenderSettings) -> anyhow::Result<Self> {
         let start = Instant::now();
         let big_df = source.fetch_batch(0, CHUNK_SIZE)?;
         let n_cols = big_df.num_columns();

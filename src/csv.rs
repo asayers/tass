@@ -4,13 +4,15 @@ use arrow::csv::reader::Format;
 use arrow::csv::ReaderBuilder;
 use arrow::datatypes::Schema;
 use arrow::record_batch::RecordBatch;
+use fileslice::FileSlice;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::sync::Arc;
 use std::time::Instant;
 
 pub struct CsvFile {
-    file: File,
+    file: File, // Keep this around for re-generating the fileslice.  TODO: Add FileSlice::refresh()
+    fs: FileSlice,
     n_rows: usize,
     format: Format,
     schema: Arc<Schema>,
@@ -18,50 +20,75 @@ pub struct CsvFile {
 
 impl CsvFile {
     pub fn new(file: File) -> anyhow::Result<CsvFile> {
-        // We don't support live-updating CSV files (yet), so we may as well cache
-        // the row count
-        let format = Format::default().with_header(true);
-        let start = Instant::now();
-        let (schema, n_rows) = format.infer_schema(file.try_clone()?, None)?;
-        for field in schema.fields.iter() {
-            eprintln!("> {field}");
-        }
-        eprintln!("Counted rows: {n_rows}");
-        eprintln!("Took {:?}", start.elapsed());
-        Ok(CsvFile {
+        let mut source = CsvFile {
+            fs: FileSlice::new(file.try_clone()?),
             file,
-            n_rows,
-            format,
-            schema: schema.into(),
-        })
+            format: Format::default().with_header(true),
+            n_rows: 0,
+            schema: Schema::empty().into(),
+        };
+        match source.format.infer_schema(source.fs.clone(), None) {
+            Ok((schema, n_rows)) => {
+                source.schema = schema.into();
+                source.n_rows = n_rows;
+            }
+            Err(e) => eprintln!("Couldn't infer schema: {e}"),
+        };
+        Ok(source)
     }
+
+    fn n_bytes(&self) -> u64 {
+        self.fs.clone().seek(SeekFrom::End(0)).unwrap()
+    }
+
+    // let start = Instant::now();
+    // for field in schema.fields.iter() {
+    //     eprintln!("> {field}");
+    // }
+    // eprintln!("Counted rows: {n_rows}");
+    // eprintln!("Took {:?}", start.elapsed());
 }
 
 impl DataSource for CsvFile {
-    fn row_count(&self) -> anyhow::Result<usize> {
+    fn row_count(&mut self) -> anyhow::Result<usize> {
+        let n_bytes = self.file.metadata()?.len();
+        if n_bytes != self.n_bytes() {
+            eprintln!(
+                "File size has changed!  {} -> {}  Recounting...",
+                self.n_bytes(),
+                n_bytes,
+            );
+            let new_fs = FileSlice::new(self.file.try_clone()?);
+            match self.format.infer_schema(self.fs.clone(), None) {
+                Ok((schema, n_rows)) => {
+                    self.fs = new_fs;
+                    self.schema = schema.into();
+                    self.n_rows = n_rows;
+                }
+                Err(e) => eprintln!("Couldn't infer schema: {e}"),
+            };
+        }
         Ok(self.n_rows)
     }
 
-    fn fetch_batch(&self, offset: usize, len: usize) -> anyhow::Result<RecordBatch> {
-        let mut file = self.file.try_clone()?;
-        file.seek(SeekFrom::Start(0))?;
+    fn fetch_batch(&mut self, offset: usize, len: usize) -> anyhow::Result<RecordBatch> {
         let mut rdr = ReaderBuilder::new(self.schema.clone())
             .with_format(self.format.clone())
             .with_bounds(offset, offset + len)
             .with_batch_size(len)
-            .build(file)?;
-        let batch = rdr.next().unwrap()?;
-        Ok(batch)
+            .build(self.fs.clone())?;
+        match rdr.next() {
+            Some(batch) => Ok(batch?),
+            None => Ok(RecordBatch::new_empty(self.schema.clone())),
+        }
     }
 
-    fn search(&self, needle: &str, from: usize, rev: bool) -> anyhow::Result<Option<usize>> {
+    fn search(&mut self, needle: &str, from: usize, rev: bool) -> anyhow::Result<Option<usize>> {
         if rev {
             bail!("Reverse-searching CSV not supported yet");
         }
-        let mut file = self.file.try_clone()?;
-        file.seek(SeekFrom::Start(0))?;
         // FIXME: Not all newlines are new rows in CSV
-        for (row, txt) in BufReader::new(&mut file)
+        for (row, txt) in BufReader::new(self.fs.clone())
             .lines()
             .enumerate()
             .skip(from + 1 /* header */ + 1 /* current_row */)

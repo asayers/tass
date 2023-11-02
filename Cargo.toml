@@ -10,6 +10,7 @@ bpaf = { version = "0.9.5", features = ["derive"] }
 chrono = "0.4.31"
 chrono-tz = "0.8.4"
 crossterm = "0.27.0"
+fileslice = { version = "0.3.0", default-features = false }
 hsl = "0.1.1"
 memchr = "2.6.4"
 parquet = "48.0.0"
