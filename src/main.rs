@@ -72,11 +72,9 @@ const CHUNK_SIZE: usize = 10_000;
 
 struct CachedSource {
     inner: Box<dyn DataSource>,
-    total_rows: usize,
     available_rows: Range<usize>, // The rows in big_df
     big_df: RecordBatch,
     col_stats: Vec<ColumnStats>, // One per column
-    idx_width: u16,
     col_idxs: Vec<usize>,
 }
 
@@ -87,12 +85,9 @@ trait DataSource {
 }
 
 impl CachedSource {
-    fn new(file: Box<dyn DataSource>, settings: &RenderSettings) -> anyhow::Result<Self> {
-        let total_rows = file.row_count()?;
-        let idx_width = total_rows.ilog10() as u16 + 1;
-
+    fn new(source: Box<dyn DataSource>, settings: &RenderSettings) -> anyhow::Result<Self> {
         let start = Instant::now();
-        let big_df = file.fetch_batch(0, CHUNK_SIZE)?;
+        let big_df = source.fetch_batch(0, CHUNK_SIZE)?;
         let n_cols = big_df.num_columns();
         eprintln!(
             "Loaded initial batch: {} MiB (took {:?})",
@@ -119,12 +114,10 @@ impl CachedSource {
         // eprintln!("Hid {n} empty columns");
 
         Ok(CachedSource {
-            inner: file,
-            total_rows,
+            inner: source,
             available_rows: 0..CHUNK_SIZE,
             big_df,
             col_stats,
-            idx_width,
             col_idxs: (0..n_cols).collect(),
         })
     }
@@ -178,10 +171,16 @@ fn runloop(
     let mut prompt = Prompt::default();
 
     loop {
-        let end_row = (start_row + term_size.1 as usize - 2).min(source.total_rows - 1);
+        let total_rows = source.inner.row_count()?;
+        let idx_width = if total_rows == 0 {
+            0
+        } else {
+            total_rows.ilog10() as u16
+        } + 1;
+        let end_row = (start_row + term_size.1 as usize - 2).min(total_rows.saturating_sub(1));
         let end_col = source.col_stats[start_col..]
             .iter()
-            .scan(source.idx_width, |acc, x| {
+            .scan(idx_width, |acc, x| {
                 *acc += x.width + 3;
                 Some(*acc)
             })
@@ -195,7 +194,7 @@ fn runloop(
             start_row,
             batch,
             term_size.1,
-            source.idx_width,
+            idx_width,
             &source.col_stats[start_col..end_col],
             &settings,
             &prompt,
