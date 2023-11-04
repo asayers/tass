@@ -6,6 +6,7 @@ use parquet::file::reader::FileReader;
 use parquet::file::serialized_reader::SerializedFileReader;
 use std::fs::File;
 use std::time::Instant;
+use tracing::debug;
 
 pub struct ParquetFile {
     file: File,
@@ -58,6 +59,6 @@ fn count_rows(file: &File) -> anyhow::Result<usize> {
     let file = file.try_clone()?;
     let rdr = SerializedFileReader::new(file)?;
     let total_rows = rdr.metadata().file_metadata().num_rows() as usize;
-    eprintln!("Counted {total_rows} rows (took {:?})", start.elapsed());
+    debug!("Counted {total_rows} rows (took {:?})", start.elapsed());
     Ok(total_rows)
 }

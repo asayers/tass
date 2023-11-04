@@ -20,8 +20,8 @@ use std::io::LineWriter;
 use std::io::Write;
 use std::ops::Range;
 use std::path::PathBuf;
-use std::time::Duration;
-use std::time::Instant;
+use std::time::{Duration, Instant};
+use tracing::debug;
 
 /// A pager for tabular data
 #[derive(Bpaf)]
@@ -34,6 +34,10 @@ struct Opts {
 }
 
 fn main() -> anyhow::Result<()> {
+    tracing_subscriber::fmt()
+        .with_writer(std::io::stderr)
+        .init();
+
     let opts = opts().run();
     let settings = RenderSettings {
         float_dps: opts.precision,
@@ -104,7 +108,7 @@ impl CachedSource {
     fn new(mut source: Box<dyn DataSource>, settings: &RenderSettings) -> anyhow::Result<Self> {
         let start = Instant::now();
         let big_df = source.fetch_batch(0, CHUNK_SIZE)?;
-        eprintln!(
+        debug!(
             "Loaded initial batch: {} MiB (took {:?})",
             big_df.get_array_memory_size() / 1024 / 1024,
             start.elapsed(),
@@ -126,7 +130,7 @@ impl CachedSource {
             .map(|(idx, _)| (idx, all_col_stats[idx].clone()))
             .unzip();
 
-        eprintln!(
+        debug!(
             "Hid {} empty columns",
             big_df.num_columns() - available_cols.len(),
         );
@@ -150,10 +154,18 @@ impl CachedSource {
         let all_rows_available =
             self.available_rows.contains(&rows.start) && self.available_rows.contains(&rows.end);
         if !all_rows_available {
+            debug!("Requested: {rows:?}; available: {:?}", self.available_rows);
             let start = Instant::now();
             let from = rows.start.saturating_sub(CHUNK_SIZE / 2);
             self.big_df = self.inner.fetch_batch(from, CHUNK_SIZE)?;
             self.available_rows = from..(from + CHUNK_SIZE);
+            debug!(took=?start.elapsed(),
+                "Loaded a new batch (rows {:?}, {} MiB)",
+                self.available_rows,
+                self.big_df.get_array_memory_size() / 1024 / 1024,
+            );
+
+            let start = Instant::now();
             for ((field, old_stats), col) in self
                 .big_df
                 .schema()
@@ -173,15 +185,10 @@ impl CachedSource {
                     self.col_stats.push(self.all_col_stats[idx].clone());
                 }
             }
+            debug!(took=?start.elapsed(), "Refined the schema");
 
             cols.start = cols.start.min(self.available_cols.len());
             cols.end = cols.end.min(self.available_cols.len());
-
-            eprintln!(
-                "Loaded a new batch: {} MiB (took {:?})",
-                self.big_df.get_array_memory_size() / 1024 / 1024,
-                start.elapsed(),
-            );
         }
 
         let enabled_cols = &self.available_cols[cols];

@@ -8,7 +8,7 @@ use fileslice::FileSlice;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::sync::Arc;
-use std::time::Instant;
+use tracing::{debug, error};
 
 pub struct CsvFile {
     file: File, // Keep this around for re-generating the fileslice.  TODO: Add FileSlice::refresh()
@@ -32,7 +32,7 @@ impl CsvFile {
                 source.schema = schema.into();
                 source.n_rows = n_rows;
             }
-            Err(e) => eprintln!("Couldn't infer schema: {e}"),
+            Err(e) => error!("Couldn't infer schema: {e}"),
         };
         Ok(source)
     }
@@ -40,32 +40,22 @@ impl CsvFile {
     fn n_bytes(&self) -> u64 {
         self.fs.clone().seek(SeekFrom::End(0)).unwrap()
     }
-
-    // let start = Instant::now();
-    // for field in schema.fields.iter() {
-    //     eprintln!("> {field}");
-    // }
-    // eprintln!("Counted rows: {n_rows}");
-    // eprintln!("Took {:?}", start.elapsed());
 }
 
 impl DataSource for CsvFile {
     fn row_count(&mut self) -> anyhow::Result<usize> {
         let n_bytes = self.file.metadata()?.len();
         if n_bytes != self.n_bytes() {
-            eprintln!(
-                "File size has changed!  {} -> {}  Recounting...",
-                self.n_bytes(),
-                n_bytes,
-            );
+            debug!("File size has changed! ({} -> {})", self.n_bytes(), n_bytes);
             let new_fs = FileSlice::new(self.file.try_clone()?);
             match self.format.infer_schema(self.fs.clone(), None) {
                 Ok((schema, n_rows)) => {
                     self.fs = new_fs;
                     self.schema = schema.into();
                     self.n_rows = n_rows;
+                    debug!("Counted {n_rows} rows");
                 }
-                Err(e) => eprintln!("Couldn't infer schema: {e}"),
+                Err(e) => error!("Couldn't infer schema: {e}"),
             };
         }
         Ok(self.n_rows)
