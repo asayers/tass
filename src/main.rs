@@ -11,13 +11,14 @@ use crate::prompt::*;
 use crate::stats::*;
 use anyhow::bail;
 use anyhow::Context;
+use arrow::datatypes::Schema;
 use arrow::record_batch::RecordBatch;
 use bpaf::{Bpaf, Parser};
 use crossterm::tty::IsTty;
 use crossterm::*;
+use std::cmp::Ordering;
 use std::fs::File;
-use std::io::LineWriter;
-use std::io::Write;
+use std::io::{LineWriter, Write};
 use std::ops::Range;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -62,7 +63,7 @@ fn main() -> anyhow::Result<()> {
         None => Box::new(CsvFile::new(file)?),
         _ => bail!("Unrecognised file extension"),
     };
-    let source = CachedSource::new(source, &settings)?;
+    let source = CachedSource::new(source);
 
     let stdout = std::io::stdout();
     let mut stdout = stdout.lock();
@@ -105,44 +106,15 @@ trait DataSource {
 }
 
 impl CachedSource {
-    fn new(mut source: Box<dyn DataSource>, settings: &RenderSettings) -> anyhow::Result<Self> {
-        let start = Instant::now();
-        let big_df = source.fetch_batch(0, CHUNK_SIZE)?;
-        debug!(
-            "Loaded initial batch: {} MiB (took {:?})",
-            big_df.get_array_memory_size() / 1024 / 1024,
-            start.elapsed(),
-        );
-
-        let all_col_stats = big_df
-            .schema()
-            .fields()
-            .iter()
-            .zip(big_df.columns())
-            .map(|(field, col)| ColumnStats::new(&field.name(), col, settings))
-            .collect::<anyhow::Result<Vec<ColumnStats>>>()?;
-
-        let (available_cols, col_stats): (Vec<_>, Vec<_>) = big_df
-            .columns()
-            .into_iter()
-            .enumerate()
-            .filter(|(_, col)| col.null_count() < col.len())
-            .map(|(idx, _)| (idx, all_col_stats[idx].clone()))
-            .unzip();
-
-        debug!(
-            "Hid {} empty columns",
-            big_df.num_columns() - available_cols.len(),
-        );
-
-        Ok(CachedSource {
+    fn new(source: Box<dyn DataSource>) -> Self {
+        CachedSource {
             inner: source,
-            all_col_stats,
-            big_df,
-            available_rows: 0..CHUNK_SIZE,
-            available_cols,
-            col_stats,
-        })
+            all_col_stats: vec![],
+            big_df: RecordBatch::new_empty(Schema::empty().into()),
+            available_rows: 0..0,
+            available_cols: vec![],
+            col_stats: vec![],
+        }
     }
 
     fn get_batch(
@@ -158,7 +130,7 @@ impl CachedSource {
             let start = Instant::now();
             let from = rows.start.saturating_sub(CHUNK_SIZE / 2);
             self.big_df = self.inner.fetch_batch(from, CHUNK_SIZE)?;
-            self.available_rows = from..(from + CHUNK_SIZE);
+            self.available_rows = from..(from + self.big_df.num_rows());
             debug!(took=?start.elapsed(),
                 "Loaded a new batch (rows {:?}, {} MiB)",
                 self.available_rows,
@@ -166,16 +138,20 @@ impl CachedSource {
             );
 
             let start = Instant::now();
-            for ((field, old_stats), col) in self
+            for (idx, (field, col)) in self
                 .big_df
                 .schema()
                 .fields()
                 .iter()
-                .zip(self.all_col_stats.iter_mut())
                 .zip(self.big_df.columns())
+                .enumerate()
             {
                 let new_stats = ColumnStats::new(&field.name(), col, settings)?;
-                old_stats.merge(new_stats);
+                match idx.cmp(&self.all_col_stats.len()) {
+                    Ordering::Less => self.all_col_stats[idx].merge(new_stats),
+                    Ordering::Equal => self.all_col_stats.push(new_stats),
+                    Ordering::Greater => panic!(),
+                }
             }
             self.col_stats.clear();
             self.available_cols.clear();
@@ -208,6 +184,9 @@ fn runloop(
     let mut start_col: usize = 0;
     let mut start_row: usize = 0;
     let mut prompt = Prompt::default();
+
+    // Load the initial batch
+    source.get_batch(0..0, 0..0, &settings)?;
 
     loop {
         let total_rows = source.inner.row_count()?;
