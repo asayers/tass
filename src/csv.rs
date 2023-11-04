@@ -20,21 +20,13 @@ pub struct CsvFile {
 
 impl CsvFile {
     pub fn new(file: File) -> anyhow::Result<CsvFile> {
-        let mut source = CsvFile {
+        Ok(CsvFile {
             fs: FileSlice::new(file.try_clone()?),
             file,
             format: Format::default().with_header(true),
             n_rows: 0,
             schema: Schema::empty().into(),
-        };
-        match source.format.infer_schema(source.fs.clone(), None) {
-            Ok((schema, n_rows)) => {
-                source.schema = schema.into();
-                source.n_rows = n_rows;
-            }
-            Err(e) => error!("Couldn't infer schema: {e}"),
-        };
-        Ok(source)
+        })
     }
 
     fn n_bytes(&self) -> u64 {
@@ -48,7 +40,7 @@ impl DataSource for CsvFile {
         if n_bytes != self.n_bytes() {
             debug!("File size has changed! ({} -> {})", self.n_bytes(), n_bytes);
             let new_fs = FileSlice::new(self.file.try_clone()?);
-            match self.format.infer_schema(self.fs.clone(), None) {
+            match self.format.infer_schema(new_fs.clone(), None) {
                 Ok((schema, n_rows)) => {
                     self.fs = new_fs;
                     self.schema = schema.into();
