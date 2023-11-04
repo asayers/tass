@@ -86,10 +86,12 @@ const CHUNK_SIZE: usize = 10_000;
 
 struct CachedSource {
     inner: Box<dyn DataSource>,
-    available_rows: Range<usize>, // The rows in big_df
+    all_col_stats: Vec<ColumnStats>, // One per column
+    // The below refer to the loaded record batch
     big_df: RecordBatch,
-    col_stats: Vec<ColumnStats>, // One per column
-    col_idxs: Vec<usize>,
+    available_cols: Vec<usize>,   // The columns in big_df
+    available_rows: Range<usize>, // The rows in big_df
+    col_stats: Vec<ColumnStats>,  // One per column in big_df
 }
 
 trait DataSource {
@@ -102,14 +104,13 @@ impl CachedSource {
     fn new(mut source: Box<dyn DataSource>, settings: &RenderSettings) -> anyhow::Result<Self> {
         let start = Instant::now();
         let big_df = source.fetch_batch(0, CHUNK_SIZE)?;
-        let n_cols = big_df.num_columns();
         eprintln!(
             "Loaded initial batch: {} MiB (took {:?})",
             big_df.get_array_memory_size() / 1024 / 1024,
             start.elapsed(),
         );
 
-        let col_stats = big_df
+        let all_col_stats = big_df
             .schema()
             .fields()
             .iter()
@@ -117,29 +118,33 @@ impl CachedSource {
             .map(|(field, col)| ColumnStats::new(&field.name(), col, settings))
             .collect::<anyhow::Result<Vec<ColumnStats>>>()?;
 
-        // let mut n = 0;
-        // for null_count in lf.clone().null_count().collect()?.get_columns() {
-        //     let n_nulls = null_count.u32()?.get(0).unwrap() as usize;
-        //     if n_nulls == total_rows {
-        //         lf = lf.drop_columns([null_count.name()]);
-        //         n += 1;
-        //     }
-        // }
-        // eprintln!("Hid {n} empty columns");
+        let (available_cols, col_stats): (Vec<_>, Vec<_>) = big_df
+            .columns()
+            .into_iter()
+            .enumerate()
+            .filter(|(_, col)| col.null_count() < col.len())
+            .map(|(idx, _)| (idx, all_col_stats[idx].clone()))
+            .unzip();
+
+        eprintln!(
+            "Hid {} empty columns",
+            big_df.num_columns() - available_cols.len(),
+        );
 
         Ok(CachedSource {
             inner: source,
-            available_rows: 0..CHUNK_SIZE,
+            all_col_stats,
             big_df,
+            available_rows: 0..CHUNK_SIZE,
+            available_cols,
             col_stats,
-            col_idxs: (0..n_cols).collect(),
         })
     }
 
     fn get_batch(
         &mut self,
         rows: Range<usize>,
-        cols: Range<usize>,
+        mut cols: Range<usize>,
         settings: &RenderSettings,
     ) -> anyhow::Result<RecordBatch> {
         let all_rows_available =
@@ -154,19 +159,32 @@ impl CachedSource {
                 .schema()
                 .fields()
                 .iter()
-                .zip(self.col_stats.iter_mut())
+                .zip(self.all_col_stats.iter_mut())
                 .zip(self.big_df.columns())
             {
                 let new_stats = ColumnStats::new(&field.name(), col, settings)?;
                 old_stats.merge(new_stats);
             }
+            self.col_stats.clear();
+            self.available_cols.clear();
+            for (idx, col) in self.big_df.columns().into_iter().enumerate() {
+                if col.null_count() < col.len() {
+                    self.available_cols.push(idx);
+                    self.col_stats.push(self.all_col_stats[idx].clone());
+                }
+            }
+
+            cols.start = cols.start.min(self.available_cols.len());
+            cols.end = cols.end.min(self.available_cols.len());
+
             eprintln!(
                 "Loaded a new batch: {} MiB (took {:?})",
                 self.big_df.get_array_memory_size() / 1024 / 1024,
                 start.elapsed(),
             );
         }
-        let enabled_cols = &self.col_idxs[cols];
+
+        let enabled_cols = &self.available_cols[cols];
         let offset = rows.start - self.available_rows.start;
         let len = rows.end - rows.start;
         let mini_df = self.big_df.project(enabled_cols)?.slice(offset, len);
