@@ -2,7 +2,7 @@ use crate::DataSource;
 use anyhow::bail;
 use arrow::csv::reader::Format;
 use arrow::csv::ReaderBuilder;
-use arrow::datatypes::Schema;
+use arrow::datatypes::{DataType, Field, Schema, SchemaBuilder};
 use arrow::record_batch::RecordBatch;
 use fileslice::FileSlice;
 use std::fs::File;
@@ -43,7 +43,19 @@ impl DataSource for CsvFile {
             match self.format.infer_schema(new_fs.clone(), None) {
                 Ok((schema, n_rows)) => {
                     self.fs = new_fs;
-                    self.schema = schema.into();
+                    // TODO: Merge it with the old schema?
+                    let mut bldr = SchemaBuilder::new();
+                    for field in schema.fields() {
+                        let field = match field.data_type() {
+                            DataType::Timestamp(_, _) => {
+                                let f: &Field = &field;
+                                f.clone().with_data_type(DataType::Utf8).into()
+                            }
+                            _ => field.clone(),
+                        };
+                        bldr.push(field);
+                    }
+                    self.schema = bldr.finish().into();
                     self.n_rows = n_rows;
                     debug!("Counted {n_rows} rows");
                 }
