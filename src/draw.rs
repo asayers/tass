@@ -9,7 +9,7 @@ use arrow::{
 use chrono::TimeZone;
 use chrono_tz::Tz;
 use crossterm::*;
-use std::{fmt::Display, io::Write};
+use std::{cmp::Ordering, fmt::Display, io::Write};
 
 pub struct RenderSettings {
     pub float_dps: usize,
@@ -272,6 +272,8 @@ fn draw_int_col<T: ArrowPrimitiveType>(
 ) -> anyhow::Result<()>
 where
     T::Native: Display,
+    T::Native: Ord,
+    T::Native: From<bool>,
 {
     let mut buf = String::new();
 
@@ -281,19 +283,41 @@ where
             x_baseline + 2,
             u16::try_from(row + 1).unwrap(),
         ))?;
-        buf.clear();
-        use std::fmt::Write;
-        write!(&mut buf, "{val}")?;
+        {
+            buf.clear();
+            use std::fmt::Write;
+            write!(&mut buf, "{val}")?;
+            if buf.len() > stats.width as usize {
+                buf.truncate(stats.width as usize - 3);
+                buf += "...";
+            }
+        }
         // right-align
         let w = (stats.width as usize).saturating_sub(buf.len());
         if w > 0 {
             write!(stdout, "{:<w$}", " ", w = w)?;
         }
-        if buf.len() > stats.width as usize {
-            buf.truncate(stats.width as usize - 3);
-            buf += "...";
+        match val.cmp(&false.into()) {
+            Ordering::Equal => {
+                let fg = hsl_to_color(hsl::HSL {
+                    h: 0.0,
+                    s: 0.0,
+                    l: 0.6,
+                });
+                stdout.queue(style::SetForegroundColor(fg))?;
+            }
+            Ordering::Less => {
+                let fg = hsl_to_color(hsl::HSL {
+                    h: 0.0,
+                    s: 0.7,
+                    l: 0.75,
+                });
+                stdout.queue(style::SetForegroundColor(fg))?;
+            }
+            Ordering::Greater => (),
         }
         stdout.write_all(buf.as_bytes())?;
+        stdout.queue(style::SetForegroundColor(style::Color::Reset))?;
     }
 
     Ok(())
