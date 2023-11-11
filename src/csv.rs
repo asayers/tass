@@ -35,9 +35,10 @@ impl CsvFile {
 }
 
 impl DataSource for CsvFile {
-    fn row_count(&mut self) -> anyhow::Result<usize> {
+    fn check_for_new_rows(&mut self) -> anyhow::Result<bool> {
         let n_bytes = self.file.metadata()?.len();
-        if n_bytes != self.n_bytes() {
+        let new_rows = n_bytes != self.n_bytes();
+        if new_rows {
             debug!("File size has changed! ({} -> {})", self.n_bytes(), n_bytes);
             let new_fs = FileSlice::new(self.file.try_clone()?);
             match self.format.infer_schema(new_fs.clone(), None) {
@@ -62,22 +63,27 @@ impl DataSource for CsvFile {
                 Err(e) => error!("Couldn't infer schema: {e}"),
             };
         }
-        Ok(self.n_rows)
+        Ok(new_rows)
     }
 
-    fn fetch_batch(&mut self, offset: usize, len: usize) -> anyhow::Result<RecordBatch> {
+    fn row_count(&self) -> usize {
+        self.n_rows
+    }
+
+    fn fetch_batch(&self, offset: usize, len: usize) -> anyhow::Result<RecordBatch> {
         let mut rdr = ReaderBuilder::new(self.schema.clone())
             .with_format(self.format.clone())
             .with_bounds(offset, offset + len)
             .with_batch_size(len)
             .build(self.fs.clone())?;
+        debug!("{:?}", self.schema);
         match rdr.next() {
             Some(batch) => Ok(batch?),
             None => Ok(RecordBatch::new_empty(self.schema.clone())),
         }
     }
 
-    fn search(&mut self, needle: &str, from: usize, rev: bool) -> anyhow::Result<Option<usize>> {
+    fn search(&self, needle: &str, from: usize, rev: bool) -> anyhow::Result<Option<usize>> {
         if rev {
             bail!("Reverse-searching CSV not supported yet");
         }

@@ -23,11 +23,16 @@ impl ParquetFile {
 }
 
 impl DataSource for ParquetFile {
-    fn row_count(&mut self) -> anyhow::Result<usize> {
-        Ok(self.n_rows)
+    fn check_for_new_rows(&mut self) -> anyhow::Result<bool> {
+        // TODO
+        Ok(false)
     }
 
-    fn fetch_batch(&mut self, offset: usize, len: usize) -> anyhow::Result<RecordBatch> {
+    fn row_count(&self) -> usize {
+        self.n_rows
+    }
+
+    fn fetch_batch(&self, offset: usize, len: usize) -> anyhow::Result<RecordBatch> {
         let file = self.file.try_clone()?;
         let mut rdr = parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder::try_new(file)?
             .with_batch_size(len)
@@ -49,7 +54,7 @@ impl DataSource for ParquetFile {
         Ok(batch)
     }
 
-    fn search(&mut self, _needle: &str, _from: usize, _rev: bool) -> anyhow::Result<Option<usize>> {
+    fn search(&self, _needle: &str, _from: usize, _rev: bool) -> anyhow::Result<Option<usize>> {
         Err(anyhow!("Searching parquet not supported yet"))
     }
 }

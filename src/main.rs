@@ -100,9 +100,10 @@ struct CachedSource {
 }
 
 trait DataSource {
-    fn row_count(&mut self) -> anyhow::Result<usize>;
-    fn fetch_batch(&mut self, offset: usize, len: usize) -> anyhow::Result<RecordBatch>;
-    fn search(&mut self, needle: &str, from: usize, rev: bool) -> anyhow::Result<Option<usize>>;
+    fn check_for_new_rows(&mut self) -> anyhow::Result<bool>;
+    fn row_count(&self) -> usize;
+    fn fetch_batch(&self, offset: usize, len: usize) -> anyhow::Result<RecordBatch>;
+    fn search(&self, needle: &str, from: usize, rev: bool) -> anyhow::Result<Option<usize>>;
 }
 
 impl CachedSource {
@@ -184,12 +185,22 @@ fn runloop(
     let mut start_col: usize = 0;
     let mut start_row: usize = 0;
     let mut prompt = Prompt::default();
+    let mut file_refresh_interval = Duration::from_millis(10);
+    let mut last_file_refresh = Instant::now();
 
     // Load the initial batch
     source.get_batch(0..0, 0..0, &settings)?;
 
     loop {
-        let total_rows = source.inner.row_count()?;
+        if last_file_refresh.elapsed() > file_refresh_interval {
+            if source.inner.check_for_new_rows()? {
+                file_refresh_interval = Duration::from_millis(10);
+            } else {
+                file_refresh_interval = (file_refresh_interval * 2).min(Duration::from_secs(1));
+            }
+            last_file_refresh = Instant::now();
+        }
+        let total_rows = source.inner.row_count();
         let idx_width = if total_rows == 0 {
             0
         } else {
@@ -218,7 +229,7 @@ fn runloop(
             &prompt,
         )?;
 
-        if event::poll(Duration::from_millis(1000))? {
+        if event::poll(file_refresh_interval)? {
             let event = event::read()?;
             match event {
                 event::Event::Key(k) => {
