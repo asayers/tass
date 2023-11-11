@@ -13,6 +13,7 @@ use std::{cmp::Ordering, fmt::Display, io::Write};
 
 pub struct RenderSettings {
     pub float_dps: usize,
+    pub hide_empty: bool,
 }
 
 pub fn draw(

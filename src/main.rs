@@ -32,6 +32,7 @@ struct Opts {
     /// How many decimal places to show when rendering floating-point numbers
     #[bpaf(fallback(5))]
     precision: usize,
+    hide_empty: bool,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -40,6 +41,7 @@ fn main() -> anyhow::Result<()> {
     let opts = opts().run();
     let settings = RenderSettings {
         float_dps: opts.precision,
+        hide_empty: opts.hide_empty,
     };
 
     let (file, ext) = match &opts.path {
@@ -155,12 +157,12 @@ impl CachedSource {
             self.col_stats.clear();
             self.available_cols.clear();
             for (idx, col) in self.big_df.columns().into_iter().enumerate() {
-                if col.null_count() < col.len() {
+                if !settings.hide_empty || col.null_count() < col.len() {
                     self.available_cols.push(idx);
                     self.col_stats.push(self.all_col_stats[idx].clone());
                 }
             }
-            debug!(took=?start.elapsed(), "Refined the schema");
+            debug!(took=?start.elapsed(), ?self.col_stats, "Refined the stats");
 
             cols.start = cols.start.min(self.available_cols.len());
             cols.end = cols.end.min(self.available_cols.len());
