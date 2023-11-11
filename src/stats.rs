@@ -9,7 +9,8 @@ pub struct ColumnStats {
     pub min_max: Option<MinMax>,
     /// The length (in chars) of the longest value, when formatted (including the header)
     pub width: u16,
-    pub cardinality: Option<u16>,
+    /// `None` means "more than 255"
+    pub cardinality: Option<u8>,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -33,9 +34,7 @@ impl ColumnStats {
         self.cardinality = self
             .cardinality
             .zip(other.cardinality)
-            .map(|(x, y)| x.max(y))
-            .or(self.cardinality)
-            .or(other.cardinality);
+            .map(|(x, y)| x.max(y));
     }
 }
 
@@ -196,7 +195,7 @@ impl ColumnStats {
         Ok(ColumnStats {
             min_max: None,
             width: max_len,
-            cardinality: Some(unique_vals.len() as u16).filter(|x| *x < 100),
+            cardinality: u8::try_from(unique_vals.len()).ok(),
         })
     }
 
