@@ -35,9 +35,7 @@ struct Opts {
 }
 
 fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt()
-        .with_writer(std::io::stderr)
-        .init();
+    init_logger();
 
     let opts = opts().run();
     let settings = RenderSettings {
@@ -281,4 +279,12 @@ fn runloop(
             }
         }
     }
+}
+
+fn init_logger() {
+    use tracing_subscriber::prelude::*;
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
+        .with(tracing_subscriber::filter::EnvFilter::from_default_env())
+        .init();
 }
