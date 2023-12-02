@@ -21,7 +21,7 @@ pub struct CsvFile {
 impl CsvFile {
     pub fn new(file: File) -> anyhow::Result<CsvFile> {
         Ok(CsvFile {
-            fs: FileSlice::new(file.try_clone()?),
+            fs: FileSlice::new(file.try_clone()?).slice(0, 0),
             file,
             format: Format::default().with_header(true),
             n_rows: 0,
