@@ -164,7 +164,7 @@ impl CachedSource {
                     self.col_stats.push(self.all_col_stats[idx].clone());
                 }
             }
-            debug!(took=?start.elapsed(), ?self.col_stats, "Refined the stats");
+            debug!(took=?start.elapsed(), "Refined the stats");
 
             cols.start = cols.start.min(self.available_cols.len());
             cols.end = cols.end.min(self.available_cols.len());

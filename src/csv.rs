@@ -9,7 +9,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tracing::{debug, info};
+use tracing::{debug, error, info};
 
 pub struct CsvFile {
     file: File, // Keep this around for re-generating the fileslice.  TODO: Add FileSlice::refresh()
@@ -117,7 +117,9 @@ impl DataSource for CsvFile {
 
         let n = self.add_new_lines()?;
         debug!("Added {n} new rows");
-        if n != 0 {
+        if n == 0 {
+            error!("Caught up with the EOF");
+        } else {
             self.fs = self.fs.slice(0, *self.row_offsets.last().unwrap());
         }
 
