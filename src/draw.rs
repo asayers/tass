@@ -20,8 +20,10 @@ pub fn draw(
     stdout: &mut impl Write,
     start_row: usize,
     df: RecordBatch,
+    term_width: u16,
     term_height: u16,
     idx_width: u16,
+    total_rows: usize,
     col_stats: &[ColumnStats],
     settings: &RenderSettings,
     prompt: &Prompt,
@@ -83,7 +85,21 @@ pub fn draw(
     }
 
     // Draw the prompt
-    stdout.queue(cursor::MoveTo(0, term_height))?;
+    let location_txt = format!(
+        "{}-{} of {}",
+        start_row + 1,
+        start_row + df.num_rows(),
+        total_rows,
+    );
+    stdout
+        .queue(cursor::MoveTo(
+            term_width - location_txt.len() as u16,
+            term_height,
+        ))?
+        .queue(style::SetAttribute(style::Attribute::Dim))?
+        .queue(style::Print(location_txt))?
+        .queue(style::SetAttribute(style::Attribute::Reset))?
+        .queue(cursor::MoveTo(0, term_height))?;
     prompt.draw(stdout)?;
 
     stdout.flush()?;
