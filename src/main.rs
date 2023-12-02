@@ -125,8 +125,8 @@ impl CachedSource {
         mut cols: Range<usize>,
         settings: &RenderSettings,
     ) -> anyhow::Result<RecordBatch> {
-        let all_rows_available =
-            self.available_rows.contains(&rows.start) && self.available_rows.contains(&rows.end);
+        let all_rows_available = self.available_rows.contains(&rows.start)
+            && self.available_rows.contains(&(rows.end - 1));
         if !all_rows_available {
             debug!("Requested: {rows:?}; available: {:?}", self.available_rows);
             let start = Instant::now();
@@ -207,7 +207,7 @@ fn runloop(
         } else {
             total_rows.ilog10() as u16
         } + 1;
-        let end_row = (start_row + term_size.1 as usize - 2).min(total_rows.saturating_sub(1));
+        let end_row = (start_row + term_size.1 as usize - 2).min(total_rows);
         let end_col = source.col_stats[start_col..]
             .iter()
             .scan(idx_width, |acc, x| {
@@ -252,19 +252,19 @@ fn runloop(
                             }
                             Cmd::ColLeft => start_col = start_col.saturating_sub(1),
                             Cmd::RowDown => {
-                                start_row = (start_row + 1).min(total_rows.saturating_sub(2))
+                                start_row = (start_row + 1).min(total_rows.saturating_sub(1))
                             }
                             Cmd::RowUp => start_row = start_row.saturating_sub(1),
-                            Cmd::RowBottom => start_row = total_rows.saturating_sub(2),
+                            Cmd::RowBottom => start_row = total_rows.saturating_sub(1),
                             Cmd::RowTop => start_row = 0,
                             Cmd::RowPgUp => {
                                 start_row = start_row.saturating_sub(term_size.1 as usize - 2)
                             }
                             Cmd::RowPgDown => {
                                 start_row = (start_row + term_size.1 as usize - 2)
-                                    .min(total_rows.saturating_sub(2))
+                                    .min(total_rows.saturating_sub(1))
                             }
-                            Cmd::RowGoTo(x) => start_row = x.min(total_rows.saturating_sub(2)),
+                            Cmd::RowGoTo(x) => start_row = x.min(total_rows.saturating_sub(1)),
                             Cmd::SearchNext(needle) => {
                                 if let Some(x) = source.inner.search(&needle, start_row, false)? {
                                     start_row = x;
