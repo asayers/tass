@@ -18,6 +18,7 @@ use crossterm::tty::IsTty;
 use crossterm::*;
 use std::cmp::Ordering;
 use std::fs::File;
+use std::io::BufWriter;
 use std::io::{LineWriter, Write};
 use std::ops::Range;
 use std::path::PathBuf;
@@ -66,7 +67,7 @@ fn main() -> anyhow::Result<()> {
     let source = CachedSource::new(source);
 
     let stdout = std::io::stdout();
-    let mut stdout = stdout.lock();
+    let mut stdout = BufWriter::new(stdout.lock());
 
     // Set up terminal
     terminal::enable_raw_mode().context("entering raw mode")?;
