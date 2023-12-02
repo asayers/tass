@@ -36,34 +36,39 @@ impl CsvFile {
 
 impl DataSource for CsvFile {
     fn check_for_new_rows(&mut self) -> anyhow::Result<bool> {
-        let n_bytes = self.file.metadata()?.len();
-        let new_rows = n_bytes != self.n_bytes();
-        if new_rows {
-            debug!("File size has changed! ({} -> {})", self.n_bytes(), n_bytes);
-            let new_fs = FileSlice::new(self.file.try_clone()?);
-            match self.format.infer_schema(new_fs.clone(), None) {
-                Ok((schema, n_rows)) => {
-                    self.fs = new_fs;
-                    // TODO: Merge it with the old schema?
-                    let mut bldr = SchemaBuilder::new();
-                    for field in schema.fields() {
-                        let field = match field.data_type() {
-                            DataType::Timestamp(_, _) => {
-                                let f: &Field = &field;
-                                f.clone().with_data_type(DataType::Utf8).into()
-                            }
-                            _ => field.clone(),
-                        };
-                        bldr.push(field);
-                    }
-                    self.schema = bldr.finish().into();
-                    self.n_rows = n_rows;
-                    debug!("Counted {n_rows} rows");
-                }
-                Err(e) => error!("Couldn't infer schema: {e}"),
-            };
+        let n_bytes_then = self.n_bytes();
+        let n_bytes_now = self.file.metadata()?.len();
+        if n_bytes_now == n_bytes_then {
+            return Ok(false);
         }
-        Ok(new_rows)
+
+        debug!("File size has changed! ({n_bytes_then} -> {n_bytes_now})");
+        let new_fs = FileSlice::new(self.file.try_clone()?);
+
+        let (schema, n_rows) = match self.format.infer_schema(new_fs.clone(), None) {
+            Ok(x) => x,
+            Err(e) => {
+                error!("Couldn't infer schema: {e}");
+                return Ok(false);
+            }
+        };
+        self.fs = new_fs;
+        // TODO: Merge it with the old schema?
+        let mut bldr = SchemaBuilder::new();
+        for field in schema.fields() {
+            let field = match field.data_type() {
+                DataType::Timestamp(_, _) => {
+                    let f: &Field = &field;
+                    f.clone().with_data_type(DataType::Utf8).into()
+                }
+                _ => field.clone(),
+            };
+            bldr.push(field);
+        }
+        self.schema = bldr.finish().into();
+        self.n_rows = n_rows;
+        debug!("Counted {n_rows} rows");
+        Ok(true)
     }
 
     fn row_count(&self) -> usize {
