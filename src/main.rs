@@ -197,7 +197,7 @@ fn runloop(
             if source.inner.check_for_new_rows()? {
                 file_refresh_interval = Duration::from_millis(10);
             } else {
-                file_refresh_interval = (file_refresh_interval * 2).min(Duration::from_secs(1));
+                file_refresh_interval = (file_refresh_interval * 10).min(Duration::from_secs(1));
             }
             last_file_refresh = Instant::now();
         }
