@@ -28,12 +28,12 @@ use tracing::debug;
 /// A pager for tabular data
 #[derive(Bpaf)]
 struct Opts {
-    #[bpaf(positional)]
-    path: Option<PathBuf>,
     /// How many decimal places to show when rendering floating-point numbers
     #[bpaf(fallback(5))]
     precision: usize,
     hide_empty: bool,
+    #[bpaf(positional)]
+    path: Option<PathBuf>,
 }
 
 fn main() -> anyhow::Result<()> {

@@ -1,6 +1,5 @@
-use std::io::Write;
-
 use crossterm::event::KeyCode;
+use std::io::Write;
 
 #[derive(Default)]
 pub struct Prompt {
