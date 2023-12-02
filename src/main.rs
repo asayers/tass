@@ -24,6 +24,7 @@ use std::ops::Range;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 use tracing::debug;
+use tracing::error;
 
 /// A pager for tabular data
 #[derive(Bpaf)]
@@ -171,7 +172,7 @@ impl CachedSource {
 
         let enabled_cols = &self.available_cols[cols];
         let offset = rows.start - self.available_rows.start;
-        let len = rows.end - rows.start;
+        let len = rows.end.min(self.available_rows.end) - rows.start;
         let mini_df = self.big_df.project(enabled_cols)?.slice(offset, len);
         Ok(mini_df)
     }
@@ -218,19 +219,21 @@ fn runloop(
             .map(|x| x as usize + start_col + 1)
             .unwrap_or(source.col_stats.len());
         // TODO: Reduce the width of the final column
-        let batch = source.get_batch(start_row..end_row, start_col..end_col, &settings)?;
-        draw(
-            stdout,
-            start_row,
-            batch,
-            term_size.0,
-            term_size.1,
-            idx_width,
-            total_rows,
-            &source.col_stats[start_col..end_col],
-            &settings,
-            &prompt,
-        )?;
+        match source.get_batch(start_row..end_row, start_col..end_col, &settings) {
+            Ok(batch) => draw(
+                stdout,
+                start_row,
+                batch,
+                term_size.0,
+                term_size.1,
+                idx_width,
+                total_rows,
+                &source.col_stats[start_col..end_col],
+                &settings,
+                &prompt,
+            )?,
+            Err(e) => error!("{e}"),
+        }
 
         if event::poll(file_refresh_interval)? {
             let event = event::read()?;
