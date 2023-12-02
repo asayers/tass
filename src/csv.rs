@@ -8,6 +8,7 @@ use fileslice::FileSlice;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use tracing::{debug, info};
 
 pub struct CsvFile {
@@ -49,17 +50,20 @@ impl CsvFile {
         Ok(())
     }
 
-    // TODO: Optimize
-    fn add_new_lines(&mut self) -> anyhow::Result<()> {
+    // TODO: Optimize (memchr + mmap?)
+    fn add_new_lines(&mut self) -> anyhow::Result<usize> {
         let n_rows_then = self.row_count();
         let mut line_start = self.row_offsets.last().copied().unwrap_or(0);
         let new_lines = BufReader::new(self.fs.slice(line_start, self.n_bytes())).lines();
+        let start = Instant::now();
         for line in new_lines {
             line_start += line?.len() as u64 + 1;
             self.row_offsets.push(line_start);
+            if start.elapsed() > Duration::from_millis(10) {
+                break;
+            }
         }
-        debug!("Added {} new rows", self.row_count() - n_rows_then);
-        Ok(())
+        Ok(self.row_count() - n_rows_then)
     }
 
     /// Merge `schema` into `self.schema`
@@ -111,7 +115,11 @@ impl DataSource for CsvFile {
             }
         }
 
-        self.add_new_lines()?;
+        let n = self.add_new_lines()?;
+        debug!("Added {n} new rows");
+        if n != 0 {
+            self.fs = self.fs.slice(0, *self.row_offsets.last().unwrap());
+        }
 
         Ok(true)
     }
