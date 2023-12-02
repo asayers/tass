@@ -8,7 +8,7 @@ use fileslice::FileSlice;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::sync::Arc;
-use tracing::{debug, error};
+use tracing::{debug, info};
 
 pub struct CsvFile {
     file: File, // Keep this around for re-generating the fileslice.  TODO: Add FileSlice::refresh()
@@ -33,6 +33,65 @@ impl CsvFile {
     fn n_bytes(&self) -> u64 {
         self.fs.clone().seek(SeekFrom::End(0)).unwrap()
     }
+
+    /// Initial schema inference just reads the header row to get the
+    /// names of the fields.  The inferred datatype of all columns will
+    /// just be "null" at this point
+    fn read_header(&mut self) -> anyhow::Result<()> {
+        let format = self.format.clone().with_header(true);
+        let (schema, n_rows) = format.infer_schema(self.fs.clone(), Some(0))?;
+        assert_eq!(n_rows, 0);
+        self.schema = schema.into();
+        for f in self.schema.fields() {
+            assert_eq!(f.data_type(), &DataType::Null);
+            info!("Read header {}", f.name());
+        }
+        Ok(())
+    }
+
+    // TODO: Optimize
+    fn add_new_lines(&mut self) -> anyhow::Result<()> {
+        let n_rows_then = self.row_count();
+        let mut line_start = self.row_offsets.last().copied().unwrap_or(0);
+        let new_lines = BufReader::new(self.fs.slice(line_start, self.n_bytes())).lines();
+        for line in new_lines {
+            line_start += line?.len() as u64 + 1;
+            self.row_offsets.push(line_start);
+        }
+        debug!("Added {} new rows", self.row_count() - n_rows_then);
+        Ok(())
+    }
+
+    /// Merge `schema` into `self.schema`
+    fn merge_schema(&mut self, schema: Schema) {
+        let mut bldr = SchemaBuilder::new();
+        for (old, new) in self.schema.fields().iter().zip(schema.fields()) {
+            let name = old.name();
+            let nullable = old.is_nullable()
+                || new.is_nullable()
+                || old.data_type() == &DataType::Null
+                || new.data_type() == &DataType::Null;
+            let dtype = match (old.data_type(), new.data_type()) {
+                (_, DataType::Timestamp(_, _)) => DataType::Utf8,
+                (x, DataType::Null) => x.clone(),
+                (DataType::Null, y) => y.clone(),
+                (x, y) if x == y => x.clone(),
+                _ => DataType::Utf8,
+            };
+            let merged = Field::new(name, dtype, nullable);
+            if &merged != old.as_ref() {
+                info!(
+                    "Updated schema for {}: {} -> {}",
+                    old.name(),
+                    old.data_type(),
+                    merged.data_type(),
+                );
+            }
+            bldr.push(merged);
+        }
+        self.schema = bldr.finish().into();
+        debug!("Merged new schema into the existing one");
+    }
 }
 
 impl DataSource for CsvFile {
@@ -42,71 +101,27 @@ impl DataSource for CsvFile {
         if n_bytes_now == n_bytes_then {
             return Ok(false);
         }
-
         debug!("File size has changed! ({n_bytes_then} -> {n_bytes_now})");
-        let new_fs = FileSlice::new(self.file.try_clone()?);
+        self.fs = FileSlice::new(self.file.try_clone()?);
 
-        if self.row_offsets.is_empty() {
-            // Initial schema inference should read the header
-            let format = self.format.clone().with_header(true);
-            let schema = match format.infer_schema(new_fs.clone(), None) {
-                Ok((x, _)) => x,
-                Err(e) => {
-                    error!("Couldn't infer schema: {e}");
-                    return Ok(false);
-                }
-            };
-            let mut bldr = SchemaBuilder::new();
-            for field in schema.fields() {
-                let field = match field.data_type() {
-                    DataType::Timestamp(_, _) => {
-                        let f: &Field = &field;
-                        f.clone().with_data_type(DataType::Utf8).into()
-                    }
-                    _ => field.clone(),
-                };
-                bldr.push(field);
+        if self.schema.fields().is_empty() {
+            match self.read_header() {
+                Ok(()) => (),
+                Err(_) => return Ok(false),
             }
-            self.schema = bldr.finish().into();
-
-            // TODO: Optimize
-            // We skip one line (the header) since this is the initial read
-            let mut line_start = 0;
-            let lines = BufReader::new(new_fs.slice(line_start, n_bytes_now)).lines();
-            for line in lines {
-                line_start += line?.len() as u64 + 1;
-                self.row_offsets.push(line_start);
-            }
-
-            self.fs = new_fs;
-            debug!("Read {} rows", self.row_count());
-            debug!("First row starts at byte {}", self.row_offsets[0]);
-            debug!(
-                "Final row starts at byte {}",
-                self.row_offsets.last().unwrap(),
-            );
-            Ok(true)
-        } else {
-            // TODO: Confirm that schemas match
-            // TODO: Optimize
-            let n_rows_then = self.row_count();
-            let mut line_start = *self.row_offsets.last().unwrap();
-            let new_lines = BufReader::new(new_fs.slice(line_start, n_bytes_now)).lines();
-            for line in new_lines {
-                line_start += line?.len() as u64 + 1;
-                self.row_offsets.push(line_start);
-            }
-            self.fs = new_fs;
-            debug!("Added {} new rows", self.row_count() - n_rows_then);
-            Ok(true)
         }
+
+        self.add_new_lines()?;
+
+        Ok(true)
     }
 
     fn row_count(&self) -> usize {
         self.row_offsets.len().saturating_sub(1)
     }
 
-    fn fetch_batch(&self, offset: usize, len: usize) -> anyhow::Result<RecordBatch> {
+    fn fetch_batch(&mut self, offset: usize, len: usize) -> anyhow::Result<RecordBatch> {
+        debug!(offset, len, "Fetching a batch");
         let row_to_byte = |row: usize| -> u64 {
             self.row_offsets
                 .get(row)
@@ -116,16 +131,23 @@ impl DataSource for CsvFile {
         let byte_start = row_to_byte(offset);
         let byte_end = row_to_byte(offset + len + 1);
         let slice = self.fs.slice(byte_start, byte_end);
+        debug!(byte_start, byte_end, "Sliced the file");
+
+        let (schema, _n_rows) = self.format.infer_schema(slice.clone(), None)?;
+        self.merge_schema(schema);
+
         let mut rdr = ReaderBuilder::new(self.schema.clone())
             .with_format(self.format.clone())
             .with_bounds(0, len)
             .with_batch_size(len)
             .build(slice)?;
-        // debug!("{:?}", self.schema);
-        match rdr.next() {
-            Some(batch) => Ok(batch?),
-            None => Ok(RecordBatch::new_empty(self.schema.clone())),
-        }
+        let batch = match rdr.next() {
+            Some(batch) => batch?,
+            None => RecordBatch::new_empty(self.schema.clone()),
+        };
+        debug!(len = batch.num_rows(), "Loaded a record batch");
+
+        Ok(batch)
     }
 
     fn search(&self, needle: &str, from: usize, rev: bool) -> anyhow::Result<Option<usize>> {

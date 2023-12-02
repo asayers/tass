@@ -103,7 +103,7 @@ struct CachedSource {
 trait DataSource {
     fn check_for_new_rows(&mut self) -> anyhow::Result<bool>;
     fn row_count(&self) -> usize;
-    fn fetch_batch(&self, offset: usize, len: usize) -> anyhow::Result<RecordBatch>;
+    fn fetch_batch(&mut self, offset: usize, len: usize) -> anyhow::Result<RecordBatch>;
     fn search(&self, needle: &str, from: usize, rev: bool) -> anyhow::Result<Option<usize>>;
 }
 
