@@ -13,7 +13,8 @@ use tracing::{debug, error};
 pub struct CsvFile {
     file: File, // Keep this around for re-generating the fileslice.  TODO: Add FileSlice::refresh()
     fs: FileSlice,
-    n_rows: usize,
+    /// The nth row begins at byte `row_offsets[n]` in `fs`
+    row_offsets: Vec<u64>,
     format: Format,
     schema: Arc<Schema>,
 }
@@ -23,8 +24,8 @@ impl CsvFile {
         Ok(CsvFile {
             fs: FileSlice::new(file.try_clone()?).slice(0, 0),
             file,
-            format: Format::default().with_header(true),
-            n_rows: 0,
+            format: Format::default().with_header(false),
+            row_offsets: vec![],
             schema: Schema::empty().into(),
         })
     }
@@ -45,9 +46,11 @@ impl DataSource for CsvFile {
         debug!("File size has changed! ({n_bytes_then} -> {n_bytes_now})");
         let new_fs = FileSlice::new(self.file.try_clone()?);
 
-        if self.n_rows == 0 {
-            let (schema, n_rows) = match self.format.infer_schema(new_fs.clone(), None) {
-                Ok(x) => x,
+        if self.row_offsets.is_empty() {
+            // Initial schema inference should read the header
+            let format = self.format.clone().with_header(true);
+            let schema = match format.infer_schema(new_fs.clone(), None) {
+                Ok((x, _)) => x,
                 Err(e) => {
                     error!("Couldn't infer schema: {e}");
                     return Ok(false);
@@ -65,32 +68,60 @@ impl DataSource for CsvFile {
                 bldr.push(field);
             }
             self.schema = bldr.finish().into();
-            self.n_rows = n_rows;
+
+            // TODO: Optimize
+            // We skip one line (the header) since this is the initial read
+            let mut line_start = 0;
+            let lines = BufReader::new(new_fs.slice(line_start, n_bytes_now)).lines();
+            for line in lines {
+                line_start += line?.len() as u64 + 1;
+                self.row_offsets.push(line_start);
+            }
+
             self.fs = new_fs;
-            debug!("Read {n_rows} rows");
+            debug!("Read {} rows", self.row_count());
+            debug!("First row starts at byte {}", self.row_offsets[0]);
+            debug!(
+                "Final row starts at byte {}",
+                self.row_offsets.last().unwrap(),
+            );
             Ok(true)
         } else {
             // TODO: Confirm that schemas match
-            let new_bytes = BufReader::new(new_fs.slice(n_bytes_then, n_bytes_now));
-            let n_new_rows = new_bytes.lines().count();
-            debug!("Added {n_new_rows} new rows");
-            self.n_rows += n_new_rows;
+            // TODO: Optimize
+            let n_rows_then = self.row_count();
+            let mut line_start = *self.row_offsets.last().unwrap();
+            let new_lines = BufReader::new(new_fs.slice(line_start, n_bytes_now)).lines();
+            for line in new_lines {
+                line_start += line?.len() as u64 + 1;
+                self.row_offsets.push(line_start);
+            }
             self.fs = new_fs;
+            debug!("Added {} new rows", self.row_count() - n_rows_then);
             Ok(true)
         }
     }
 
     fn row_count(&self) -> usize {
-        self.n_rows
+        self.row_offsets.len().saturating_sub(1)
     }
 
     fn fetch_batch(&self, offset: usize, len: usize) -> anyhow::Result<RecordBatch> {
+        let row_to_byte = |row: usize| -> u64 {
+            self.row_offsets
+                .get(row)
+                .copied()
+                .unwrap_or_else(|| self.n_bytes())
+        };
+        let byte_start = row_to_byte(offset);
+        let byte_end = row_to_byte(offset + len + 1);
+        let slice = self.fs.slice(byte_start, byte_end);
         let mut rdr = ReaderBuilder::new(self.schema.clone())
             .with_format(self.format.clone())
-            .with_bounds(offset, offset + len)
+            .with_bounds(0, len)
             .with_batch_size(len)
-            .build(self.fs.clone())?;
-        debug!("{:?}", self.schema);
+            .build(slice)?;
+        // debug!("{:?}", self.schema);
         match rdr.next() {
             Some(batch) => Ok(batch?),
             None => Ok(RecordBatch::new_empty(self.schema.clone())),
