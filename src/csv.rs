@@ -45,30 +45,39 @@ impl DataSource for CsvFile {
         debug!("File size has changed! ({n_bytes_then} -> {n_bytes_now})");
         let new_fs = FileSlice::new(self.file.try_clone()?);
 
-        let (schema, n_rows) = match self.format.infer_schema(new_fs.clone(), None) {
-            Ok(x) => x,
-            Err(e) => {
-                error!("Couldn't infer schema: {e}");
-                return Ok(false);
-            }
-        };
-        self.fs = new_fs;
-        // TODO: Merge it with the old schema?
-        let mut bldr = SchemaBuilder::new();
-        for field in schema.fields() {
-            let field = match field.data_type() {
-                DataType::Timestamp(_, _) => {
-                    let f: &Field = &field;
-                    f.clone().with_data_type(DataType::Utf8).into()
+        if self.n_rows == 0 {
+            let (schema, n_rows) = match self.format.infer_schema(new_fs.clone(), None) {
+                Ok(x) => x,
+                Err(e) => {
+                    error!("Couldn't infer schema: {e}");
+                    return Ok(false);
                 }
-                _ => field.clone(),
             };
-            bldr.push(field);
+            let mut bldr = SchemaBuilder::new();
+            for field in schema.fields() {
+                let field = match field.data_type() {
+                    DataType::Timestamp(_, _) => {
+                        let f: &Field = &field;
+                        f.clone().with_data_type(DataType::Utf8).into()
+                    }
+                    _ => field.clone(),
+                };
+                bldr.push(field);
+            }
+            self.schema = bldr.finish().into();
+            self.n_rows = n_rows;
+            self.fs = new_fs;
+            debug!("Read {n_rows} rows");
+            Ok(true)
+        } else {
+            // TODO: Confirm that schemas match
+            let new_bytes = BufReader::new(new_fs.slice(n_bytes_then, n_bytes_now));
+            let n_new_rows = new_bytes.lines().count();
+            debug!("Added {n_new_rows} new rows");
+            self.n_rows += n_new_rows;
+            self.fs = new_fs;
+            Ok(true)
         }
-        self.schema = bldr.finish().into();
-        self.n_rows = n_rows;
-        debug!("Counted {n_rows} rows");
-        Ok(true)
     }
 
     fn row_count(&self) -> usize {
