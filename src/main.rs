@@ -1,126 +1,79 @@
-mod dataframe;
-mod grid;
-mod index;
-mod kind;
+mod csv;
+mod draw;
+mod parquet;
+mod prompt;
+mod stats;
 
-use crate::dataframe::*;
-use crate::grid::*;
-use crate::index::*;
-use crate::kind::*;
-use anyhow::{anyhow, bail, Context};
-use clap::Parser;
+use crate::csv::*;
+use crate::draw::*;
+use crate::parquet::*;
+use crate::prompt::*;
+use crate::stats::*;
+use anyhow::bail;
+use anyhow::Context;
+use arrow::datatypes::Schema;
+use arrow::record_batch::RecordBatch;
+use bpaf::{Bpaf, Parser};
 use crossterm::tty::IsTty;
 use crossterm::*;
-use once_cell::sync::OnceCell;
-use std::cmp::{max, min};
-use std::io::{BufRead, Write};
-use std::path::{Path, PathBuf};
-use std::sync::{Mutex, MutexGuard};
-use std::time::Duration;
-use tempfile::*;
+use std::cmp::Ordering;
+use std::fs::File;
+use std::io::BufWriter;
+use std::io::{LineWriter, Write};
+use std::ops::Range;
+use std::path::PathBuf;
+use std::time::{Duration, Instant};
+use tracing::debug;
+use tracing::error;
 
 /// A pager for tabular data
-#[derive(Parser)]
+///
+/// Data can be in CSV or parquet format.  The format is inferred from the file
+/// extension.  When data is read from stdin, it is expected to be CSV.
+#[derive(Bpaf)]
 struct Opts {
+    /// How many decimal places to show when rendering floating-point numbers
+    #[bpaf(fallback(5))]
+    precision: usize,
+    /// Whether to hide empty columns
+    hide_empty: bool,
+    /// The path to read.  If not specified, data will be read from stdin
+    #[bpaf(positional)]
     path: Option<PathBuf>,
-    /// Start in follow mode
-    #[clap(short, long)]
-    follow: bool,
-    #[clap(long, default_value_t)]
-    color_scheme: ColorScheme,
 }
 
-fn main() {
-    let opts = Opts::parse();
-    match main_2(opts) {
-        Ok(()) => (),
-        Err(e) => {
-            eprintln!("Error: {}", e);
-            for e in e.chain() {
-                eprintln!("{}", e);
-            }
-            std::process::exit(1);
-        }
-    }
-}
+fn main() -> anyhow::Result<()> {
+    init_logger();
 
-static INDEX: OnceCell<Mutex<Index>> = OnceCell::new();
-fn get_index<'a>() -> MutexGuard<'a, Index> {
-    INDEX.get().unwrap().lock().unwrap()
-}
+    let opts = opts().run();
+    let settings = RenderSettings {
+        float_dps: opts.precision,
+        hide_empty: opts.hide_empty,
+    };
 
-fn main_2(opts: Opts) -> anyhow::Result<()> {
-    let path: Box<dyn AsRef<Path>> = match opts.path {
-        Some(path) => {
-            INDEX
-                .set(Mutex::new(
-                    Index::from_file(&path).context("Scanning newlines")?,
-                ))
-                .map_err(|_| anyhow!("Tried to set the index twice!"))?;
-
-            Box::new(path)
-        }
+    let (file, ext) = match &opts.path {
+        Some(x) => (File::open(x)?, x.extension().and_then(|x| x.to_str())),
         None => {
-            INDEX
-                .set(Mutex::new(Index::no_file()))
-                .map_err(|_| anyhow!("Tried to set the index twice!"))?;
-
-            let stdin = std::io::stdin();
+            let mut stdin = std::io::stdin();
             if stdin.is_tty() {
                 bail!("Need to specify a filename or feed data to stdin");
             }
-            let tempfile = NamedTempFile::new().context("creating tempfile")?;
-            let (mut file, path) = tempfile.into_parts();
-            std::thread::spawn(move || {
-                // Try to push a whole line atomically - otherwise the main
-                // thread may see a line with the wrong number of columns.
-                for line in stdin.lock().lines() {
-                    let mut index = INDEX.get().unwrap().lock().unwrap();
-                    if index.watch_for_updates {
-                        let mut line = line.unwrap();
-                        line.push('\n');
-                        file.write_all(line.as_bytes())
-                            .context("filling tempfile")
-                            .unwrap();
-                        index.push_line(line.len() as u64 - 1); // Remove the newline
-                    }
-                }
-            });
-            Box::new(path)
+            let tmpfile = tempfile::tempfile()?;
+            let mut wtr = LineWriter::new(tmpfile.try_clone()?);
+            std::thread::spawn(move || std::io::copy(&mut stdin, &mut wtr));
+            (tmpfile, None)
         }
     };
-
-    // Wait for there to be enough data
-    const MIN_LINES: usize = 2;
-    let n = get_index().len();
-    if n < MIN_LINES {
-        let mut sleep = Duration::from_millis(1);
-        loop {
-            let mut index = get_index();
-            index.update().context("Updating index")?;
-            if index.len() >= MIN_LINES {
-                break;
-            }
-            std::mem::drop(index);
-            std::thread::sleep(sleep);
-            if sleep < Duration::from_millis(500) {
-                sleep *= 2; // Start with an exponential backoff
-            }
-            if sleep > Duration::from_millis(500) {
-                // Looks like we'll be waiting a while...
-                eprintln!(
-                    "Waiting for more data... (saw {} lines but need at least {})",
-                    n, MIN_LINES
-                );
-                sleep = Duration::from_millis(500);
-            }
-        }
-    }
-
-    let df = DataFrame::new(path.as_ref().as_ref()).context("loading dataframe")?;
+    let source: Box<dyn DataSource> = match ext {
+        Some("parquet") => Box::new(ParquetFile::new(file)?),
+        Some("csv") => Box::new(CsvFile::new(file)?),
+        None => Box::new(CsvFile::new(file)?),
+        _ => bail!("Unrecognised file extension"),
+    };
+    let source = CachedSource::new(source);
 
     let stdout = std::io::stdout();
-    let mut stdout = stdout.lock();
+    let mut stdout = BufWriter::new(stdout.lock());
 
     // Set up terminal
     terminal::enable_raw_mode().context("entering raw mode")?;
@@ -130,10 +83,7 @@ fn main_2(opts: Opts) -> anyhow::Result<()> {
         .flush()?;
 
     // Store the result so the cleanup happens even if there's an error
-    let result = main_3(df, opts.follow, opts.color_scheme, &mut stdout);
-
-    // Delete the tempfile (if reading from stdin)
-    std::mem::drop(path);
+    let result = runloop(&mut stdout, source, settings);
 
     // Clean up terminal
     stdout
@@ -144,212 +94,213 @@ fn main_2(opts: Opts) -> anyhow::Result<()> {
     result
 }
 
-fn main_3(
-    mut df: DataFrame,
-    start_in_follow: bool,
-    color_scheme: ColorScheme,
-    stdout: &mut impl Write,
-) -> anyhow::Result<()> {
-    let (mut cols, mut rows) = terminal::size()?;
-    let mut start_line = 0usize;
-    let mut start_col = 0usize;
-    let mut msgs = String::new();
-    let mut last_search = String::new();
-    let mut drawer = GridDrawer::default();
+const CHUNK_SIZE: usize = 10_000;
 
-    let mut excluded = df.get_headers().map(|_| false).collect::<Vec<_>>();
-    let mut estimators = df
-        .get_headers()
-        .map(|_| CategoryDetector::default())
-        .collect::<Vec<_>>();
+struct CachedSource {
+    inner: Box<dyn DataSource>,
+    all_col_stats: Vec<ColumnStats>, // One per column
+    // The below refer to the loaded record batch
+    big_df: RecordBatch,
+    available_cols: Vec<usize>,   // The columns in big_df
+    available_rows: Range<usize>, // The rows in big_df
+    col_stats: Vec<ColumnStats>,  // One per column in big_df
+}
 
-    let n_rows = get_index().len();
-    let samples = min(n_rows - 1, 1000);
-    for i in 0..samples {
-        let line = i * (n_rows - 1) / samples;
-        let record = df.get_line(line)?;
-        for (est, x) in estimators.iter_mut().zip(&record) {
-            est.feed(x.to_string());
+trait DataSource {
+    fn check_for_new_rows(&mut self) -> anyhow::Result<bool>;
+    fn row_count(&self) -> usize;
+    fn fetch_batch(&mut self, offset: usize, len: usize) -> anyhow::Result<RecordBatch>;
+    fn search(&self, needle: &str, from: usize, rev: bool) -> anyhow::Result<Option<usize>>;
+}
+
+impl CachedSource {
+    fn new(source: Box<dyn DataSource>) -> Self {
+        CachedSource {
+            inner: source,
+            all_col_stats: vec![],
+            big_df: RecordBatch::new_empty(Schema::empty().into()),
+            available_rows: 0..0,
+            available_cols: vec![],
+            col_stats: vec![],
         }
     }
 
-    #[derive(Clone, Copy, PartialEq)]
-    enum Mode {
-        Jump,
-        Search,
-        Exclude,
-        Follow,
+    fn get_batch(
+        &mut self,
+        rows: Range<usize>,
+        mut cols: Range<usize>,
+        settings: &RenderSettings,
+    ) -> anyhow::Result<RecordBatch> {
+        let all_rows_available = self.available_rows.contains(&rows.start)
+            && self.available_rows.contains(&(rows.end - 1));
+        if !all_rows_available {
+            debug!("Requested: {rows:?}; available: {:?}", self.available_rows);
+            let start = Instant::now();
+            let from = rows.start.saturating_sub(CHUNK_SIZE / 2);
+            self.big_df = self.inner.fetch_batch(from, CHUNK_SIZE)?;
+            self.available_rows = from..(from + self.big_df.num_rows());
+            debug!(took=?start.elapsed(),
+                "Loaded a new batch (rows {:?}, {} MiB)",
+                self.available_rows,
+                self.big_df.get_array_memory_size() / 1024 / 1024,
+            );
+
+            let start = Instant::now();
+            for (idx, (field, col)) in self
+                .big_df
+                .schema()
+                .fields()
+                .iter()
+                .zip(self.big_df.columns())
+                .enumerate()
+            {
+                let new_stats = ColumnStats::new(&field.name(), col, settings)?;
+                match idx.cmp(&self.all_col_stats.len()) {
+                    Ordering::Less => self.all_col_stats[idx].merge(new_stats),
+                    Ordering::Equal => self.all_col_stats.push(new_stats),
+                    Ordering::Greater => panic!(),
+                }
+            }
+            self.col_stats.clear();
+            self.available_cols.clear();
+            for (idx, col) in self.big_df.columns().into_iter().enumerate() {
+                if !settings.hide_empty || col.null_count() < col.len() {
+                    self.available_cols.push(idx);
+                    self.col_stats.push(self.all_col_stats[idx].clone());
+                }
+            }
+            debug!(took=?start.elapsed(), "Refined the stats");
+
+            cols.start = cols.start.min(self.available_cols.len());
+            cols.end = cols.end.min(self.available_cols.len());
+        }
+
+        let enabled_cols = &self.available_cols[cols];
+        let offset = rows.start - self.available_rows.start;
+        let len = rows.end.min(self.available_rows.end) - rows.start;
+        let mini_df = self.big_df.project(enabled_cols)?.slice(offset, len);
+        Ok(mini_df)
     }
-    let mut input_buf = String::new();
-    let mut mode = if start_in_follow {
-        Mode::Follow
-    } else {
-        Mode::Jump
-    };
+}
+
+fn runloop(
+    stdout: &mut impl Write,
+    mut source: CachedSource,
+    settings: RenderSettings,
+) -> anyhow::Result<()> {
+    let mut term_size = terminal::size()?;
+    let mut start_col: usize = 0;
+    let mut start_row: usize = 0;
+    let mut prompt = Prompt::default();
+    let mut file_refresh_interval = Duration::from_millis(10);
+    let mut last_file_refresh = Instant::now();
+
+    // Load the initial batch
+    source.get_batch(0..0, 0..0, &settings)?;
 
     loop {
-        let n_rows = get_index().len();
-        if mode == Mode::Follow {
-            start_line = max(0, n_rows.saturating_sub(rows as usize));
+        if last_file_refresh.elapsed() > file_refresh_interval {
+            if source.inner.check_for_new_rows()? {
+                file_refresh_interval = Duration::from_millis(10);
+            } else {
+                file_refresh_interval = (file_refresh_interval * 10).min(Duration::from_secs(1));
+            }
+            last_file_refresh = Instant::now();
         }
-        let end_line = min(n_rows - 1, start_line + rows as usize - 2);
-        drawer.draw(
-            stdout,
-            &mut df,
-            DrawParams {
-                rows: rows as usize,
-                cols: cols as usize,
-                start_line,
-                end_line,
-                start_col,
-                excluded: excluded.clone(),
-                kinds: estimators.iter().map(|x| x.estimate()).collect(),
-                color_scheme,
-            },
-        )?;
-
-        let position = format!(
-            "{}-{} of {}{} ",
-            start_line + 1,
-            end_line,
-            n_rows - 1,
-            if get_index().up_to_date() { "" } else { "..." }
-        );
-        let prompt = match mode {
-            Mode::Jump => ":",
-            Mode::Search => "/",
-            Mode::Exclude => "-",
-            Mode::Follow => ">",
-        };
-        stdout
-            .queue(cursor::MoveTo(0, rows))?
-            .queue(terminal::Clear(terminal::ClearType::CurrentLine))?
-            .queue(style::Print(&position))?
-            .queue(style::Print(&prompt))?
-            .queue(style::Print(&input_buf))?
-            .queue(cursor::MoveTo(cols - msgs.len() as u16, rows))?
-            .queue(style::SetForegroundColor(style::Color::Blue))?
-            .queue(style::Print(&msgs.trim()))?
-            .queue(style::ResetColor)?
-            .queue(cursor::MoveTo(
-                (position.len() + prompt.len() + input_buf.len()) as u16,
-                rows,
-            ))?;
-        stdout.flush()?;
-
-        // TODO: Get a prompt notification of file change, don't poll
-        if !event::poll(Duration::from_millis(100))? {
-            INDEX.get().unwrap().lock().unwrap().update()?;
-            continue;
+        let total_rows = source.inner.row_count();
+        let idx_width = if total_rows == 0 {
+            0
+        } else {
+            total_rows.ilog10() as u16
+        } + 1;
+        if prompt.is_following() {
+            start_row = total_rows.saturating_sub(term_size.1 as usize - 2);
+        }
+        let end_row = (start_row + term_size.1 as usize - 2).min(total_rows);
+        let end_col = source.col_stats[start_col..]
+            .iter()
+            .scan(idx_width, |acc, x| {
+                *acc += x.width + 3;
+                Some(*acc)
+            })
+            .position(|x| x > term_size.0)
+            .map(|x| x as usize + start_col + 1)
+            .unwrap_or(source.col_stats.len());
+        // TODO: Reduce the width of the final column
+        match source.get_batch(start_row..end_row, start_col..end_col, &settings) {
+            Ok(batch) => draw(
+                stdout,
+                start_row,
+                batch,
+                term_size.0,
+                term_size.1,
+                idx_width,
+                total_rows,
+                &source.col_stats[start_col..end_col],
+                &settings,
+                &prompt,
+            )?,
+            Err(e) => error!("{e}"),
         }
 
-        // We have user input; let's handle it
-
-        msgs.clear();
-        let max_line = n_rows - 2;
-        let add = |start_line: usize, x: usize| min(max_line, start_line.saturating_add(x));
-        let key = match event::read()? {
-            Key(k) => k,
-            Resize(c, r) => {
-                cols = c;
-                rows = r;
-                continue;
-            }
-            Mouse(_) => continue,
-        };
-        use crossterm::event::{Event::*, KeyCode::*, KeyModifiers};
-        use Mode::*;
-        match (mode, key.code) {
-            // Exiting the program
-            (Jump, Esc) | (Jump, Char('q')) | (Follow, Char('q')) => return Ok(()),
-
-            // Stopping the flow of stdin
-            //
-            // This is a poor attempt to mimic the behaviour of less.  In less,
-            // ctrl-C closes stdin, thus killing the upstream process (well,
-            // it's up to the process what to do, but this is normally what
-            // happens when writing to stdout fails).
-            //
-            // I haven't yet figured out a cross-platform way to close
-            // stdin, so all we do is stop updating the _displayed_ data.
-            // The upstream process continues running, and the stdin reader
-            // thread continues writing its output to a tempfile.  Not ideal.
-            (_, Char('c')) if key.modifiers == KeyModifiers::CONTROL => get_index().stop_watching(),
-
-            // Typing at the prompt (search/exclude modes)
-            (Search, Char(x)) | (Exclude, Char(x)) => input_buf.push(x),
-            (Search, Backspace) | (Exclude, Backspace) => {
-                if input_buf.is_empty() {
-                    mode = Mode::Jump
-                } else {
-                    input_buf.pop();
+        if event::poll(file_refresh_interval)? {
+            let event = event::read()?;
+            match event {
+                event::Event::Key(k) => {
+                    let cmd = match k.code {
+                        event::KeyCode::Char('c')
+                            if k.modifiers.contains(event::KeyModifiers::CONTROL) =>
+                        {
+                            return Ok(())
+                        }
+                        code => prompt.handle(code),
+                    };
+                    if let Some(cmd) = cmd {
+                        match cmd {
+                            Cmd::ColRight => {
+                                start_col =
+                                    (start_col + 1).min(source.col_stats.len().saturating_sub(1))
+                            }
+                            Cmd::ColLeft => start_col = start_col.saturating_sub(1),
+                            Cmd::RowDown => {
+                                start_row = (start_row + 1).min(total_rows.saturating_sub(1))
+                            }
+                            Cmd::RowUp => start_row = start_row.saturating_sub(1),
+                            Cmd::RowBottom => start_row = total_rows.saturating_sub(1),
+                            Cmd::RowTop => start_row = 0,
+                            Cmd::RowPgUp => {
+                                start_row = start_row.saturating_sub(term_size.1 as usize - 2)
+                            }
+                            Cmd::RowPgDown => {
+                                start_row = (start_row + term_size.1 as usize - 2)
+                                    .min(total_rows.saturating_sub(1))
+                            }
+                            Cmd::RowGoTo(x) => start_row = x.min(total_rows.saturating_sub(1)),
+                            Cmd::SearchNext(needle) => {
+                                if let Some(x) = source.inner.search(&needle, start_row, false)? {
+                                    start_row = x;
+                                }
+                            }
+                            Cmd::SearchPrev(needle) => {
+                                if let Some(x) = source.inner.search(&needle, start_row, true)? {
+                                    start_row = x;
+                                }
+                            }
+                            Cmd::Exit => return Ok(()),
+                        }
+                    }
                 }
+                event::Event::Resize(cols, rows) => term_size = (cols, rows),
+                _ => (),
             }
-            (Search, Esc) | (Exclude, Esc) => {
-                input_buf.clear();
-                mode = Jump;
-            }
-
-            // Exclude mode
-            (Jump, Char('-')) => mode = Exclude,
-            (Exclude, Enter) => {
-                if let Some(idx) = df.get_headers().position(|hdr| hdr == input_buf) {
-                    excluded[idx] = !excluded[idx];
-                } else {
-                    msgs.push_str("Column not found");
-                }
-                input_buf.clear();
-                mode = Jump;
-            }
-
-            // Search mode
-            (Jump, Char('/')) => mode = Search,
-            (Search, Enter) => {
-                std::mem::swap(&mut last_search, &mut input_buf);
-                input_buf.clear();
-                mode = Jump;
-                match df.search(start_line + 1, &last_search)? {
-                    Some(line) => start_line = line,
-                    None => msgs.push_str("No match"),
-                }
-            }
-            (Jump, Char('n')) => match df.search(start_line + 2, &last_search)? {
-                Some(line) => start_line = line,
-                None => msgs.push_str("No match"),
-            },
-
-            (Jump, Char('?')) => msgs.push_str("reverse search not implemented yet"),
-            (Jump, Char('N')) => msgs.push_str("reverse search not implemented yet"),
-
-            (Jump, Char(x @ '0'..='9')) => input_buf.push(x),
-            (Jump, Char('g')) | (Jump, Char('G')) | (Jump, Enter) => {
-                match input_buf.parse::<usize>() {
-                    Err(_) => (),
-                    Ok(0) => start_line = 0,
-                    Ok(x) => start_line = min(max_line, x - 1),
-                }
-                input_buf.clear();
-            }
-
-            // Scrolling the grid
-            (Jump, Down) | (Jump, Char('j')) => start_line = add(start_line, 1),
-            (Jump, Up) | (Jump, Char('k')) => start_line = start_line.saturating_sub(1),
-            (Jump, PageDown) => start_line = add(start_line, rows as usize - 2),
-            (Jump, PageUp) => start_line = start_line.saturating_sub(rows as usize - 2),
-            (Jump, Home) => start_line = 0,
-            (Jump, End) => start_line = max_line,
-            (Jump, Right) | (Jump, Char('l')) | (Follow, Right) | (Follow, Char('l')) => {
-                start_col += 1
-            }
-            (Jump, Left) | (Jump, Char('h')) | (Follow, Left) | (Follow, Char('h')) => {
-                start_col = start_col.saturating_sub(1)
-            }
-
-            // Follow mode: 'f' to enter, anything else leaves
-            (Jump, Char('f')) | (Jump, Char('F')) => mode = Follow,
-            (Follow, _) => mode = Jump,
-
-            _ => (),
         }
     }
+}
+
+fn init_logger() {
+    use tracing_subscriber::prelude::*;
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
+        .with(tracing_subscriber::filter::EnvFilter::from_default_env())
+        .init();
 }
