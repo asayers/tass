@@ -5,9 +5,14 @@ It's like `less`, but for CSV and parquet files!  It looks like this:
 
 <img src="https://github.com/asayers/tass/raw/master/demo.png">
 
-And here's tass (an older version) following a growing file:
+The first column only contains a small number of unique values, so tass colour-codes them.
+The other columns are numerical, so tass right-aligns them and shows negative values in red.
 
 <img src="https://github.com/asayers/tass/raw/master/demo.gif">
+
+This demo shows data being piped into (an older version of) tass.
+You can also open files which are still being appeanded to;
+new rows appear as the file grows.
 
 ## Installing
 
