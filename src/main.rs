@@ -154,7 +154,7 @@ impl CachedSource {
                 .zip(self.big_df.columns())
                 .enumerate()
             {
-                let new_stats = ColumnStats::new(&field.name(), col, settings)?;
+                let new_stats = ColumnStats::new(field.name(), col, settings)?;
                 match idx.cmp(&self.all_col_stats.len()) {
                     Ordering::Less => self.all_col_stats[idx].merge(new_stats),
                     Ordering::Equal => self.all_col_stats.push(new_stats),
@@ -163,7 +163,7 @@ impl CachedSource {
             }
             self.col_stats.clear();
             self.available_cols.clear();
-            for (idx, col) in self.big_df.columns().into_iter().enumerate() {
+            for (idx, col) in self.big_df.columns().iter().enumerate() {
                 if !settings.hide_empty || col.null_count() < col.len() {
                     self.available_cols.push(idx);
                     self.col_stats.push(self.all_col_stats[idx].clone());
@@ -224,7 +224,7 @@ fn runloop(
                 Some(*acc)
             })
             .position(|x| x > term_size.0)
-            .map(|x| x as usize + start_col + 1)
+            .map(|x| x + start_col + 1)
             .unwrap_or(source.col_stats.len());
         // TODO: Reduce the width of the final column
         match source.get_batch(start_row..end_row, start_col..end_col, &settings) {

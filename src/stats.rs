@@ -166,10 +166,7 @@ impl ColumnStats {
             .max()
             .unwrap_or(0);
         Ok(ColumnStats {
-            min_max: min.zip(max).map(|(min, max)| MinMax {
-                min: min as f64,
-                max: max as f64,
-            }),
+            min_max: min.zip(max).map(|(min, max)| MinMax { min, max }),
             width: max_len,
             cardinality: None,
         })

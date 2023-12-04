@@ -16,6 +16,7 @@ pub struct RenderSettings {
     pub hide_empty: bool,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn draw(
     stdout: &mut impl Write,
     start_row: usize,
@@ -258,7 +259,7 @@ fn draw_utf8_col<T: OffsetSizeTrait>(
                 hash = ((hash << 5) + hash) + byte;
             }
             let fg = hsl_to_color(hsl::HSL {
-                h: (hash as f64) as f64 * 360. / 255.,
+                h: hash as f64 * 360. / 255.,
                 s: 0.5,
                 l: 0.7,
             });
