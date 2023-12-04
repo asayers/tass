@@ -3,6 +3,10 @@
 
 It's like `less`, but for CSV and parquet files!  It looks like this:
 
+<img src="https://github.com/asayers/tass/raw/master/demo.png">
+
+And here's tass (an older version) following a growing file:
+
 <img src="https://github.com/asayers/tass/raw/master/demo.gif">
 
 ## Installing
