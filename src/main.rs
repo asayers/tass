@@ -1,12 +1,11 @@
 mod csv;
 mod draw;
+#[cfg(feature = "parquet")]
 mod parquet;
 mod prompt;
 mod stats;
 
-use crate::csv::*;
 use crate::draw::*;
-use crate::parquet::*;
 use crate::prompt::*;
 use crate::stats::*;
 use anyhow::bail;
@@ -65,9 +64,10 @@ fn main() -> anyhow::Result<()> {
         }
     };
     let source: Box<dyn DataSource> = match ext {
-        Some("parquet") => Box::new(ParquetFile::new(file)?),
-        Some("csv") => Box::new(CsvFile::new(file)?),
-        None => Box::new(CsvFile::new(file)?),
+        #[cfg(feature = "parquet")]
+        Some("parquet") => Box::new(crate::parquet::ParquetFile::new(file)?),
+        Some("csv") => Box::new(crate::csv::CsvFile::new(file)?),
+        None => Box::new(crate::csv::CsvFile::new(file)?),
         _ => bail!("Unrecognised file extension"),
     };
     let source = CachedSource::new(source);
