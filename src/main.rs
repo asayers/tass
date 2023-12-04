@@ -208,6 +208,9 @@ fn runloop(
         } else {
             total_rows.ilog10() as u16
         } + 1;
+        if prompt.is_following() {
+            start_row = total_rows.saturating_sub(term_size.1 as usize - 2);
+        }
         let end_row = (start_row + term_size.1 as usize - 2).min(total_rows);
         let end_col = source.col_stats[start_col..]
             .iter()

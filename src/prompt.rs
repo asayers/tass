@@ -13,6 +13,7 @@ enum Mode {
     #[default]
     Normal,
     Search,
+    Follow,
 }
 
 pub enum Cmd {
@@ -35,9 +36,14 @@ impl Prompt {
         let ps1 = match self.mode {
             Mode::Normal => ":",
             Mode::Search => "/",
+            Mode::Follow => ">",
         };
         write!(stdout, "{}{}", ps1, self.input)?;
         Ok(())
+    }
+
+    pub fn is_following(&self) -> bool {
+        matches!(self.mode, Mode::Follow)
     }
 
     pub fn handle(&mut self, key: KeyCode) -> Option<Cmd> {
@@ -48,6 +54,10 @@ impl Prompt {
                 KeyCode::Down | KeyCode::Char('j') => Some(Cmd::RowDown),
                 KeyCode::Up | KeyCode::Char('k') => Some(Cmd::RowUp),
                 KeyCode::End | KeyCode::Char('G') => Some(Cmd::RowBottom),
+                KeyCode::Char('F') | KeyCode::Char('f') => {
+                    self.mode = Mode::Follow;
+                    None
+                }
                 KeyCode::Home => Some(Cmd::RowTop),
                 KeyCode::PageUp => Some(Cmd::RowPgUp),
                 KeyCode::PageDown => Some(Cmd::RowPgDown),
@@ -112,6 +122,15 @@ impl Prompt {
                 KeyCode::PageUp => None,
                 KeyCode::PageDown => None,
                 _ => None,
+            },
+            Mode::Follow => match key {
+                KeyCode::Right | KeyCode::Char('l') => Some(Cmd::ColRight),
+                KeyCode::Left | KeyCode::Char('h') => Some(Cmd::ColLeft),
+                KeyCode::Char('q') => Some(Cmd::Exit),
+                _ => {
+                    self.mode = Mode::Normal;
+                    None
+                }
             },
         }
     }
