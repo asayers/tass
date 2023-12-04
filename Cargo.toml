@@ -11,7 +11,7 @@ repository = "https://github.com/asayers/tass"
 [dependencies]
 anyhow = { version = "1.0.75", features = ["backtrace"] }
 arrow = { version = "49", features = ["chrono-tz"] }
-bpaf = { version = "0.9.5", features = ["derive"] }
+bpaf = { version = "0.9.6", features = ["derive"] }
 chrono = "0.4.31"
 chrono-tz = "0.8.4"
 crossterm = "0.27.0"
@@ -21,4 +21,4 @@ memchr = "2.6.4"
 parquet = "49"
 tempfile = "3.8.1"
 tracing = "0.1.40"
-tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
