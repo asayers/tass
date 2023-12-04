@@ -1,7 +1,7 @@
 <h1 align="center">Tass</h1>
 <p align="center">A pager for tabular data</p>
 
-It's like `less`, but for CSV!  It looks like this:
+It's like `less`, but for CSV and parquet files!  It looks like this:
 
 <img src="https://github.com/asayers/tass/raw/master/demo.gif">
 
@@ -37,12 +37,12 @@ number <kbd>g</kbd>                               | Move to line `$number`
 
 ## Comparison to other tools
 
-Tool                             | Functionality                                   | Filetypes          | Streaming | File size
----------------------------------|-------------------------------------------------|--------------------|-----------|------------------------------------
-tass                             | ⭐ Viewing data, basic searching and filtering  | CSV                | yes       | Large (bigger than memory is fine)
-[csvlens]                        | ⭐ Appears to be very similar to tass           | CSV, TSV           | yes       | ?
-[VisiData]                       | ⭐⭐ Summary stats, plots, etc.                 | CSV, JSON, ...     | yes       | Medium (up to perhaps 50% of memory)
-Excel/Calc/Numbers/Google Sheets | ⭐⭐⭐ It's a spreadsheet!                      | CSV, xls, ods, ... | no        | Small (1M row limit)
+Tool                             | Functionality                                   | Filetypes               | Streaming | File size
+---------------------------------|-------------------------------------------------|-------------------------|-----------|------------------------------------
+tass                             | ⭐ Viewing data, basic searching and filtering  | CSV, parquet            | yes       | Large (bigger than memory is fine)
+[csvlens]                        | ⭐ Appears to be very similar to tass           | CSV, TSV                | yes       | ?
+[VisiData]                       | ⭐⭐ Summary stats, plots, etc.                 | CSV, JSON, parquet, ... | yes       | Medium (up to perhaps 50% of memory)
+Excel/Calc/Numbers/Google Sheets | ⭐⭐⭐ It's a spreadsheet!                      | CSV, xls, ods, ...      | no        | Small (1M row limit)
 
 My advice is to use the most full-featured tool you can get away with.
 However, if you _are_ cursed with multi-gigabyte CSV files, then your options
