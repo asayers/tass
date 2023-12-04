@@ -1,3 +1,13 @@
+## 0.6.0
+
+* Support reading from parquet files
+* Performance improvements across the board
+* Prettify the header and footer rows
+* Show negative values in red and zeroes in grey
+* Add a `--precision` flag for controlling the formatting of floating-point columns
+* Columns widths are more stable
+* Internally, tass now represents data as using Arrow arrays
+
 ## 0.5.0
 
 * Start the UI immediately, scan newline off-main-thread
