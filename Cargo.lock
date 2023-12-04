@@ -1323,6 +1323,7 @@ dependencies = [
  "hsl",
  "memchr",
  "parquet",
+ "serde_json",
  "tempfile",
  "tracing",
  "tracing-subscriber",

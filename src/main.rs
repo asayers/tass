@@ -1,5 +1,7 @@
 mod csv;
 mod draw;
+#[cfg(feature = "json")]
+mod json;
 #[cfg(feature = "parquet")]
 mod parquet;
 mod prompt;
@@ -67,6 +69,8 @@ fn main() -> anyhow::Result<()> {
         #[cfg(feature = "parquet")]
         Some("parquet") => Box::new(crate::parquet::ParquetFile::new(file)?),
         Some("csv") => Box::new(crate::csv::CsvFile::new(file)?),
+        #[cfg(feature = "json")]
+        Some("json" | "jsonl" | "ndjson") => Box::new(crate::json::JsonFile::new(file)?),
         None => Box::new(crate::csv::CsvFile::new(file)?),
         _ => bail!("Unrecognised file extension"),
     };
