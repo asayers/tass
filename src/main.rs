@@ -27,12 +27,17 @@ use tracing::debug;
 use tracing::error;
 
 /// A pager for tabular data
+///
+/// Data can be in CSV or parquet format.  The format is inferred from the file
+/// extension.  When data is read from stdin, it is expected to be CSV.
 #[derive(Bpaf)]
 struct Opts {
     /// How many decimal places to show when rendering floating-point numbers
     #[bpaf(fallback(5))]
     precision: usize,
+    /// Whether to hide empty columns
     hide_empty: bool,
+    /// The path to read.  If not specified, data will be read from stdin
     #[bpaf(positional)]
     path: Option<PathBuf>,
 }
