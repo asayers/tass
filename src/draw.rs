@@ -127,133 +127,96 @@ fn draw_col(
 
     match col.data_type() {
         DataType::Null => Ok(()),
-        DataType::Utf8 => draw_utf8_col::<i32>(stdout, stats, x_baseline, width, col!(), settings),
-        DataType::LargeUtf8 => {
-            draw_utf8_col::<i64>(stdout, stats, x_baseline, width, col!(), settings)
-        }
-        DataType::Boolean => draw_bool_col(stdout, stats, x_baseline, width, col!(), settings),
-        DataType::Int8 => {
-            draw_int_col::<Int8Type>(stdout, stats, x_baseline, width, col!(), settings)
-        }
-        DataType::Int16 => {
-            draw_int_col::<Int16Type>(stdout, stats, x_baseline, width, col!(), settings)
-        }
-        DataType::Int32 => {
-            draw_int_col::<Int32Type>(stdout, stats, x_baseline, width, col!(), settings)
-        }
-        DataType::Int64 => {
-            draw_int_col::<Int64Type>(stdout, stats, x_baseline, width, col!(), settings)
-        }
-        DataType::UInt8 => {
-            draw_int_col::<UInt8Type>(stdout, stats, x_baseline, width, col!(), settings)
-        }
-        DataType::UInt16 => {
-            draw_int_col::<UInt16Type>(stdout, stats, x_baseline, width, col!(), settings)
-        }
-        DataType::UInt32 => {
-            draw_int_col::<UInt32Type>(stdout, stats, x_baseline, width, col!(), settings)
-        }
-        DataType::UInt64 => {
-            draw_int_col::<UInt64Type>(stdout, stats, x_baseline, width, col!(), settings)
-        }
-        DataType::Float16 => {
-            draw_float_col::<Float16Type>(stdout, stats, x_baseline, width, col!(), settings)
-        }
-        DataType::Float32 => {
-            draw_float_col::<Float32Type>(stdout, stats, x_baseline, width, col!(), settings)
-        }
-        DataType::Float64 => {
-            draw_float_col::<Float64Type>(stdout, stats, x_baseline, width, col!(), settings)
-        }
-        DataType::Timestamp(TimeUnit::Second, tz) => draw_timestamp_col::<TimestampSecondType>(
+        DataType::Utf8 => draw_utf8_col::<i32>(
             stdout,
-            stats,
             x_baseline,
             width,
             col!(),
-            settings,
+            stats.cardinality.is_some(),
+        ),
+        DataType::LargeUtf8 => draw_utf8_col::<i64>(
+            stdout,
+            x_baseline,
+            width,
+            col!(),
+            stats.cardinality.is_some(),
+        ),
+        DataType::Boolean => draw_bool_col(stdout, x_baseline, width, col!()),
+        DataType::Int8 => draw_int_col::<Int8Type>(stdout, x_baseline, width, col!()),
+        DataType::Int16 => draw_int_col::<Int16Type>(stdout, x_baseline, width, col!()),
+        DataType::Int32 => draw_int_col::<Int32Type>(stdout, x_baseline, width, col!()),
+        DataType::Int64 => draw_int_col::<Int64Type>(stdout, x_baseline, width, col!()),
+        DataType::UInt8 => draw_int_col::<UInt8Type>(stdout, x_baseline, width, col!()),
+        DataType::UInt16 => draw_int_col::<UInt16Type>(stdout, x_baseline, width, col!()),
+        DataType::UInt32 => draw_int_col::<UInt32Type>(stdout, x_baseline, width, col!()),
+        DataType::UInt64 => draw_int_col::<UInt64Type>(stdout, x_baseline, width, col!()),
+        DataType::Float16 => {
+            draw_float_col::<Float16Type>(stdout, x_baseline, width, col!(), settings)
+        }
+        DataType::Float32 => {
+            draw_float_col::<Float32Type>(stdout, x_baseline, width, col!(), settings)
+        }
+        DataType::Float64 => {
+            draw_float_col::<Float64Type>(stdout, x_baseline, width, col!(), settings)
+        }
+        DataType::Timestamp(TimeUnit::Second, tz) => draw_timestamp_col::<TimestampSecondType>(
+            stdout,
+            x_baseline,
+            width,
+            col!(),
             tz.as_deref(),
         ),
         DataType::Timestamp(TimeUnit::Millisecond, tz) => {
             draw_timestamp_col::<TimestampMillisecondType>(
                 stdout,
-                stats,
                 x_baseline,
                 width,
                 col!(),
-                settings,
                 tz.as_deref(),
             )
         }
         DataType::Timestamp(TimeUnit::Microsecond, tz) => {
             draw_timestamp_col::<TimestampMicrosecondType>(
                 stdout,
-                stats,
                 x_baseline,
                 width,
                 col!(),
-                settings,
                 tz.as_deref(),
             )
         }
         DataType::Timestamp(TimeUnit::Nanosecond, tz) => {
             draw_timestamp_col::<TimestampNanosecondType>(
                 stdout,
-                stats,
                 x_baseline,
                 width,
                 col!(),
-                settings,
                 tz.as_deref(),
             )
         }
-        DataType::Date32 => {
-            draw_date_col::<Date32Type>(stdout, stats, x_baseline, width, col!(), settings)
-        }
-        DataType::Date64 => {
-            draw_date_col::<Date64Type>(stdout, stats, x_baseline, width, col!(), settings)
-        }
+        DataType::Date32 => draw_date_col::<Date32Type>(stdout, x_baseline, width, col!()),
+        DataType::Date64 => draw_date_col::<Date64Type>(stdout, x_baseline, width, col!()),
         DataType::Time32(TimeUnit::Second) => {
-            draw_time_col::<Time32SecondType>(stdout, stats, x_baseline, width, col!(), settings)
+            draw_time_col::<Time32SecondType>(stdout, x_baseline, width, col!())
         }
-        DataType::Time32(TimeUnit::Millisecond) => draw_time_col::<Time32MillisecondType>(
-            stdout,
-            stats,
-            x_baseline,
-            width,
-            col!(),
-            settings,
-        ),
+        DataType::Time32(TimeUnit::Millisecond) => {
+            draw_time_col::<Time32MillisecondType>(stdout, x_baseline, width, col!())
+        }
         DataType::Time32(TimeUnit::Microsecond | TimeUnit::Nanosecond) => {
             unreachable!()
         }
         DataType::Time64(TimeUnit::Second | TimeUnit::Millisecond) => {
             unreachable!()
         }
-        DataType::Time64(TimeUnit::Microsecond) => draw_time_col::<Time64MicrosecondType>(
-            stdout,
-            stats,
-            x_baseline,
-            width,
-            col!(),
-            settings,
-        ),
-        DataType::Time64(TimeUnit::Nanosecond) => draw_time_col::<Time64NanosecondType>(
-            stdout,
-            stats,
-            x_baseline,
-            width,
-            col!(),
-            settings,
-        ),
+        DataType::Time64(TimeUnit::Microsecond) => {
+            draw_time_col::<Time64MicrosecondType>(stdout, x_baseline, width, col!())
+        }
+        DataType::Time64(TimeUnit::Nanosecond) => {
+            draw_time_col::<Time64NanosecondType>(stdout, x_baseline, width, col!())
+        }
         DataType::Duration(_) => unimpl(stdout, x_baseline, width, "Duration"),
         DataType::Interval(_) => unimpl(stdout, x_baseline, width, "Interval"),
-        DataType::Binary => {
-            draw_binary_col::<i32>(stdout, stats, x_baseline, width, col!(), settings)
-        }
-        DataType::LargeBinary => {
-            draw_binary_col::<i64>(stdout, stats, x_baseline, width, col!(), settings)
-        }
+        DataType::Binary => draw_binary_col::<i32>(stdout, x_baseline, width, col!()),
+        DataType::LargeBinary => draw_binary_col::<i64>(stdout, x_baseline, width, col!()),
         DataType::FixedSizeBinary(_) => unimpl(stdout, x_baseline, width, "FixedSizeBinary"),
         DataType::List(_) => unimpl(stdout, x_baseline, width, "List"),
         DataType::FixedSizeList(_, _) => unimpl(stdout, x_baseline, width, "FixedSizeList"),
@@ -287,11 +250,10 @@ fn hsl_to_color(hsl: hsl::HSL) -> style::Color {
 
 fn draw_utf8_col<T: OffsetSizeTrait>(
     stdout: &mut impl Write,
-    stats: &ColumnStats,
     x_baseline: u16,
     width: u16,
     col: &GenericStringArray<T>,
-    _settings: &RenderSettings,
+    is_categorical: bool,
 ) -> anyhow::Result<()> {
     for (row, val) in col.iter().enumerate() {
         let Some(val) = val else { continue };
@@ -299,7 +261,7 @@ fn draw_utf8_col<T: OffsetSizeTrait>(
             x_baseline + 2,
             u16::try_from(row + 1).unwrap(),
         ))?;
-        if stats.cardinality.is_some() {
+        if is_categorical {
             let mut hash = 7;
             for byte in val.bytes() {
                 hash = ((hash << 5) + hash) + byte;
@@ -312,7 +274,7 @@ fn draw_utf8_col<T: OffsetSizeTrait>(
             stdout.queue(style::SetForegroundColor(fg))?;
         }
         print_text(stdout, val, width)?;
-        if stats.cardinality.is_some() {
+        if is_categorical {
             stdout.queue(style::SetForegroundColor(style::Color::Reset))?;
         }
     }
@@ -322,11 +284,9 @@ fn draw_utf8_col<T: OffsetSizeTrait>(
 
 fn draw_binary_col<T: OffsetSizeTrait>(
     stdout: &mut impl Write,
-    stats: &ColumnStats,
     x_baseline: u16,
     width: u16,
     col: &GenericBinaryArray<T>,
-    _settings: &RenderSettings,
 ) -> anyhow::Result<()> {
     for (row, val) in col.iter().enumerate() {
         let Some(val) = val else { continue };
@@ -336,9 +296,6 @@ fn draw_binary_col<T: OffsetSizeTrait>(
             u16::try_from(row + 1).unwrap(),
         ))?;
         print_text(stdout, &txt, width)?;
-        if stats.cardinality.is_some() {
-            stdout.queue(style::SetForegroundColor(style::Color::Reset))?;
-        }
     }
 
     Ok(())
@@ -346,11 +303,9 @@ fn draw_binary_col<T: OffsetSizeTrait>(
 
 fn draw_int_col<T: ArrowPrimitiveType>(
     stdout: &mut impl Write,
-    stats: &ColumnStats,
     x_baseline: u16,
     width: u16,
     col: &PrimitiveArray<T>,
-    _settings: &RenderSettings,
 ) -> anyhow::Result<()>
 where
     T::Native: Display,
@@ -403,7 +358,6 @@ where
 
 fn draw_float_col<T: ArrowPrimitiveType>(
     stdout: &mut impl Write,
-    stats: &ColumnStats,
     x_baseline: u16,
     width: u16,
     col: &PrimitiveArray<T>,
@@ -436,11 +390,9 @@ where
 
 fn draw_bool_col(
     stdout: &mut impl Write,
-    stats: &ColumnStats,
     x_baseline: u16,
     width: u16,
     col: &BooleanArray,
-    _settings: &RenderSettings,
 ) -> anyhow::Result<()> {
     let mut buf = String::new();
 
@@ -462,11 +414,9 @@ fn draw_bool_col(
 
 fn draw_timestamp_col<T: ArrowPrimitiveType>(
     stdout: &mut impl Write,
-    stats: &ColumnStats,
     x_baseline: u16,
     width: u16,
     col: &PrimitiveArray<T>,
-    _settings: &RenderSettings,
     tz: Option<&str>,
 ) -> anyhow::Result<()>
 where
@@ -497,11 +447,9 @@ where
 
 fn draw_date_col<T: ArrowPrimitiveType>(
     stdout: &mut impl Write,
-    stats: &ColumnStats,
     x_baseline: u16,
     width: u16,
     col: &PrimitiveArray<T>,
-    _settings: &RenderSettings,
 ) -> anyhow::Result<()>
 where
     T::Native: Into<i64>,
@@ -526,11 +474,9 @@ where
 
 fn draw_time_col<T: ArrowPrimitiveType>(
     stdout: &mut impl Write,
-    stats: &ColumnStats,
     x_baseline: u16,
     width: u16,
     col: &PrimitiveArray<T>,
-    _settings: &RenderSettings,
 ) -> anyhow::Result<()>
 where
     T::Native: Into<i64>,
