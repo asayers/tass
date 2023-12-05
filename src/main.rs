@@ -200,6 +200,7 @@ fn runloop(
     let mut last_file_refresh = Instant::now();
     let mut total_rows = source.inner.row_count();
     let mut dirty = true;
+    let mut col_widths = vec![];
 
     // Load the initial batch
     source.get_batch(0..0, 0..0, &settings)?;
@@ -237,6 +238,8 @@ fn runloop(
                 .map(|x| x + start_col + 1)
                 .unwrap_or(source.col_stats.len());
             // TODO: Reduce the width of the final column
+            col_widths.clear();
+            col_widths.extend(source.col_stats[start_col..].iter().map(|s| s.ideal_width));
             match source.get_batch(start_row..end_row, start_col..end_col, &settings) {
                 Ok(batch) => draw(
                     stdout,
@@ -245,6 +248,7 @@ fn runloop(
                     term_size.0,
                     term_size.1,
                     idx_width,
+                    &col_widths,
                     total_rows,
                     &source.col_stats[start_col..end_col],
                     &settings,

@@ -8,7 +8,7 @@ use arrow::{
 pub struct ColumnStats {
     pub min_max: Option<MinMax>,
     /// The length (in chars) of the longest value, when formatted (including the header)
-    pub width: u16,
+    pub ideal_width: u16,
     /// `None` means "more than 255"
     pub cardinality: Option<u8>,
 }
@@ -30,7 +30,7 @@ impl ColumnStats {
             })
             .or(self.min_max)
             .or(other.min_max);
-        self.width = self.width.max(other.width);
+        self.ideal_width = self.ideal_width.max(other.ideal_width);
         self.cardinality = self
             .cardinality
             .zip(other.cardinality)
@@ -109,7 +109,7 @@ impl ColumnStats {
             DataType::Union(_, _) => ColumnStats::fixed_len(15),
             DataType::RunEndEncoded(_, _) => ColumnStats::fixed_len(15),
         };
-        stats.width = stats.width.max(name.len() as u16).max(3);
+        stats.ideal_width = stats.ideal_width.max(name.len() as u16).max(3);
         Ok(stats)
     }
 
@@ -137,7 +137,7 @@ impl ColumnStats {
                 min: min as f64,
                 max: max as f64,
             }),
-            width: max_len,
+            ideal_width: max_len,
             cardinality: None,
         })
     }
@@ -167,7 +167,7 @@ impl ColumnStats {
             .unwrap_or(0);
         Ok(ColumnStats {
             min_max: min.zip(max).map(|(min, max)| MinMax { min, max }),
-            width: max_len,
+            ideal_width: max_len,
             cardinality: None,
         })
     }
@@ -192,7 +192,7 @@ impl ColumnStats {
 
         Ok(ColumnStats {
             min_max: None,
-            width: max_len,
+            ideal_width: max_len,
             cardinality: u8::try_from(unique_vals.len()).ok(),
         })
     }
@@ -213,14 +213,14 @@ impl ColumnStats {
         };
         Ok(ColumnStats {
             min_max: None,
-            width: max_len,
+            ideal_width: max_len,
             cardinality: None,
         })
     }
 
     fn fixed_len(max_len: u16) -> ColumnStats {
         ColumnStats {
-            width: max_len,
+            ideal_width: max_len,
             min_max: None,
             cardinality: None,
         }
