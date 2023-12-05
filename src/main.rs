@@ -198,6 +198,7 @@ fn runloop(
     let mut prompt = Prompt::default();
     let mut file_refresh_interval = Duration::from_millis(10);
     let mut last_file_refresh = Instant::now();
+    let mut total_rows = source.inner.row_count();
 
     // Load the initial batch
     source.get_batch(0..0, 0..0, &settings)?;
@@ -208,11 +209,11 @@ fn runloop(
             if new_rows == 0 {
                 file_refresh_interval = (file_refresh_interval * 10).min(Duration::from_secs(1));
             } else {
+                total_rows = source.inner.row_count();
                 file_refresh_interval = Duration::from_millis(10);
             }
             last_file_refresh = Instant::now();
         }
-        let total_rows = source.inner.row_count();
         let idx_width = if total_rows == 0 {
             0
         } else {
