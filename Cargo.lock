@@ -554,9 +554,9 @@ checksum = "25cbce373ec4653f1a01a31e8a5e5ec0c622dc27ff9c4e6606eefef5cbbed4a5"
 
 [[package]]
 name = "fileslice"
-version = "0.3.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "198346b88b730c9432e40f3cf3b6677ca96636f8cccdbd1d80d15d559f3e67dd"
+checksum = "dcabda1d643236a6217f1c931dcb3090c4aef2eff30d0c3cc3e23c008e91d2bf"
 
 [[package]]
 name = "flatbuffers"

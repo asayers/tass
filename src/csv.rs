@@ -6,13 +6,12 @@ use arrow::datatypes::{DataType, Field, Schema, SchemaBuilder};
 use arrow::record_batch::RecordBatch;
 use fileslice::FileSlice;
 use std::fs::File;
-use std::io::{BufRead, BufReader, Seek, SeekFrom};
+use std::io::{BufRead, BufReader};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tracing::{debug, error, info};
 
 pub struct CsvFile {
-    file: File, // Keep this around for re-generating the fileslice.  TODO: Add FileSlice::refresh()
     fs: FileSlice,
     /// The nth row begins at byte `row_offsets[n]` in `fs`
     row_offsets: Vec<u64>,
@@ -23,16 +22,11 @@ pub struct CsvFile {
 impl CsvFile {
     pub fn new(file: File) -> anyhow::Result<CsvFile> {
         Ok(CsvFile {
-            fs: FileSlice::new(file.try_clone()?).slice(0, 0),
-            file,
+            fs: FileSlice::new(file.try_clone()?).slice(0..0),
             format: Format::default().with_header(false),
             row_offsets: vec![],
             schema: Schema::empty().into(),
         })
-    }
-
-    fn n_bytes(&self) -> u64 {
-        self.fs.clone().seek(SeekFrom::End(0)).unwrap()
     }
 
     /// Initial schema inference just reads the header row to get the
@@ -54,7 +48,7 @@ impl CsvFile {
     fn add_new_lines(&mut self) -> anyhow::Result<usize> {
         let n_rows_then = self.row_count();
         let mut line_start = self.row_offsets.last().copied().unwrap_or(0);
-        let new_lines = BufReader::new(self.fs.slice(line_start, self.n_bytes())).lines();
+        let new_lines = BufReader::new(self.fs.slice(line_start..)).lines();
         let start = Instant::now();
         for line in new_lines {
             line_start += line?.len() as u64 + 1;
@@ -100,13 +94,13 @@ impl CsvFile {
 
 impl DataSource for CsvFile {
     fn check_for_new_rows(&mut self) -> anyhow::Result<bool> {
-        let n_bytes_then = self.n_bytes();
-        let n_bytes_now = self.file.metadata()?.len();
+        let n_bytes_then = self.fs.end_pos();
+        self.fs.expand();
+        let n_bytes_now = self.fs.end_pos();
         if n_bytes_now == n_bytes_then {
             return Ok(false);
         }
         debug!("File size has changed! ({n_bytes_then} -> {n_bytes_now})");
-        self.fs = FileSlice::new(self.file.try_clone()?);
 
         if self.schema.fields().is_empty() {
             match self.read_header() {
@@ -120,7 +114,8 @@ impl DataSource for CsvFile {
         if n == 0 {
             error!("Caught up with the EOF");
         } else {
-            self.fs = self.fs.slice(0, *self.row_offsets.last().unwrap());
+            let x = *self.row_offsets.last().unwrap();
+            self.fs = self.fs.slice(..x);
         }
 
         Ok(true)
@@ -136,11 +131,11 @@ impl DataSource for CsvFile {
             self.row_offsets
                 .get(row)
                 .copied()
-                .unwrap_or_else(|| self.n_bytes())
+                .unwrap_or_else(|| self.fs.end_pos())
         };
         let byte_start = row_to_byte(offset);
         let byte_end = row_to_byte(offset + len + 1);
-        let slice = self.fs.slice(byte_start, byte_end);
+        let slice = self.fs.slice(byte_start..byte_end);
         debug!(byte_start, byte_end, "Sliced the file");
 
         let (schema, _n_rows) = self.format.infer_schema(slice.clone(), None)?;
