@@ -84,6 +84,7 @@ fn main() -> anyhow::Result<()> {
     stdout
         .queue(terminal::EnterAlternateScreen)?
         .queue(terminal::DisableLineWrap)?
+        .queue(event::EnableMouseCapture)?
         .flush()?;
 
     // Store the result so the cleanup happens even if there's an error
@@ -261,53 +262,50 @@ fn runloop(
 
         if event::poll(file_refresh_interval)? {
             let event = event::read()?;
-            match event {
-                event::Event::Key(k) => {
-                    let cmd = match k.code {
-                        event::KeyCode::Char('c')
-                            if k.modifiers.contains(event::KeyModifiers::CONTROL) =>
-                        {
-                            return Ok(())
-                        }
-                        code => prompt.handle(code),
-                    };
-                    if let Some(cmd) = cmd {
-                        match cmd {
-                            Cmd::ColRight => {
-                                start_col =
-                                    (start_col + 1).min(source.col_stats.len().saturating_sub(1))
-                            }
-                            Cmd::ColLeft => start_col = start_col.saturating_sub(1),
-                            Cmd::RowDown => {
-                                start_row = (start_row + 1).min(total_rows.saturating_sub(1))
-                            }
-                            Cmd::RowUp => start_row = start_row.saturating_sub(1),
-                            Cmd::RowBottom => start_row = total_rows.saturating_sub(1),
-                            Cmd::RowTop => start_row = 0,
-                            Cmd::RowPgUp => {
-                                start_row = start_row.saturating_sub(term_size.1 as usize - 2)
-                            }
-                            Cmd::RowPgDown => {
-                                start_row = (start_row + term_size.1 as usize - 2)
-                                    .min(total_rows.saturating_sub(1))
-                            }
-                            Cmd::RowGoTo(x) => start_row = x.min(total_rows.saturating_sub(1)),
-                            Cmd::SearchNext(needle) => {
-                                if let Some(x) = source.inner.search(&needle, start_row, false)? {
-                                    start_row = x;
-                                }
-                            }
-                            Cmd::SearchPrev(needle) => {
-                                if let Some(x) = source.inner.search(&needle, start_row, true)? {
-                                    start_row = x;
-                                }
-                            }
-                            Cmd::Exit => return Ok(()),
+            let cmd = match event {
+                event::Event::Key(k) => match k.code {
+                    event::KeyCode::Char('c')
+                        if k.modifiers.contains(event::KeyModifiers::CONTROL) =>
+                    {
+                        return Ok(())
+                    }
+                    code => prompt.handle_key(code),
+                },
+                event::Event::Mouse(ev) => prompt.handle_mouse(ev),
+                event::Event::Resize(cols, rows) => {
+                    term_size = (cols, rows);
+                    None
+                }
+                _ => None,
+            };
+            if let Some(cmd) = cmd {
+                match cmd {
+                    Cmd::ColRight => {
+                        start_col = (start_col + 1).min(source.col_stats.len().saturating_sub(1))
+                    }
+                    Cmd::ColLeft => start_col = start_col.saturating_sub(1),
+                    Cmd::RowDown => start_row = (start_row + 1).min(total_rows.saturating_sub(1)),
+                    Cmd::RowUp => start_row = start_row.saturating_sub(1),
+                    Cmd::RowBottom => start_row = total_rows.saturating_sub(1),
+                    Cmd::RowTop => start_row = 0,
+                    Cmd::RowPgUp => start_row = start_row.saturating_sub(term_size.1 as usize - 2),
+                    Cmd::RowPgDown => {
+                        start_row =
+                            (start_row + term_size.1 as usize - 2).min(total_rows.saturating_sub(1))
+                    }
+                    Cmd::RowGoTo(x) => start_row = x.min(total_rows.saturating_sub(1)),
+                    Cmd::SearchNext(needle) => {
+                        if let Some(x) = source.inner.search(&needle, start_row, false)? {
+                            start_row = x;
                         }
                     }
+                    Cmd::SearchPrev(needle) => {
+                        if let Some(x) = source.inner.search(&needle, start_row, true)? {
+                            start_row = x;
+                        }
+                    }
+                    Cmd::Exit => return Ok(()),
                 }
-                event::Event::Resize(cols, rows) => term_size = (cols, rows),
-                _ => (),
             }
             dirty = true;
         }

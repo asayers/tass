@@ -1,4 +1,4 @@
-use crossterm::event::KeyCode;
+use crossterm::event::{KeyCode, MouseEvent, MouseEventKind};
 use std::io::Write;
 
 #[derive(Default)]
@@ -46,7 +46,7 @@ impl Prompt {
         matches!(self.mode, Mode::Follow)
     }
 
-    pub fn handle(&mut self, key: KeyCode) -> Option<Cmd> {
+    pub fn handle_key(&mut self, key: KeyCode) -> Option<Cmd> {
         match self.mode {
             Mode::Normal => match key {
                 KeyCode::Right | KeyCode::Char('l') => Some(Cmd::ColRight),
@@ -132,6 +132,16 @@ impl Prompt {
                     None
                 }
             },
+        }
+    }
+
+    pub fn handle_mouse(&mut self, ev: MouseEvent) -> Option<Cmd> {
+        match ev.kind {
+            MouseEventKind::ScrollDown => Some(Cmd::RowPgDown),
+            MouseEventKind::ScrollUp => Some(Cmd::RowPgUp),
+            MouseEventKind::ScrollLeft => Some(Cmd::ColLeft),
+            MouseEventKind::ScrollRight => Some(Cmd::ColRight),
+            _ => None,
         }
     }
 }
