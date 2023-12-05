@@ -430,7 +430,6 @@ where
         if let Some(tz) = tz {
             let tz: Tz = tz.parse().unwrap();
             let datetime = tz.from_utc_datetime(&datetime);
-            eprintln!("{:?} {}", datetime, tz);
             write!(&mut buf, "{datetime}")?;
         } else {
             write!(&mut buf, "{datetime}")?;
