@@ -1,7 +1,7 @@
 use crate::prompt::Prompt;
 use crate::stats::*;
 use arrow::{
-    array::{Array, GenericStringArray, OffsetSizeTrait, PrimitiveArray},
+    array::{Array, BooleanArray, GenericStringArray, OffsetSizeTrait, PrimitiveArray},
     datatypes::*,
     record_batch::RecordBatch,
     temporal_conversions,
@@ -124,7 +124,7 @@ fn draw_col(
         DataType::Null => Ok(()),
         DataType::Utf8 => draw_utf8_col::<i32>(stdout, stats, x_baseline, col!(), settings),
         DataType::LargeUtf8 => draw_utf8_col::<i64>(stdout, stats, x_baseline, col!(), settings),
-        DataType::Boolean => unimpl(stdout, x_baseline, "Boolean"),
+        DataType::Boolean => draw_bool_col(stdout, stats, x_baseline, col!(), settings),
         DataType::Int8 => draw_int_col::<Int8Type>(stdout, stats, x_baseline, col!(), settings),
         DataType::Int16 => draw_int_col::<Int16Type>(stdout, stats, x_baseline, col!(), settings),
         DataType::Int32 => draw_int_col::<Int32Type>(stdout, stats, x_baseline, col!(), settings),
@@ -367,6 +367,35 @@ where
         if w > 0 {
             write!(stdout, "{:<w$}", " ", w = w)?;
         }
+        if buf.len() > stats.width as usize {
+            buf.truncate(stats.width as usize - 3);
+            buf += "...";
+        }
+        stdout.write_all(buf.as_bytes())?;
+    }
+
+    Ok(())
+}
+
+fn draw_bool_col(
+    stdout: &mut impl Write,
+    stats: &ColumnStats,
+    x_baseline: u16,
+    col: &BooleanArray,
+    _settings: &RenderSettings,
+) -> anyhow::Result<()> {
+    let mut buf = String::new();
+
+    for (row, val) in col.iter().enumerate() {
+        let Some(val) = val else { continue };
+        stdout.queue(cursor::MoveTo(
+            x_baseline + 2,
+            u16::try_from(row + 1).unwrap(),
+        ))?;
+        buf.clear();
+        use std::fmt::Write;
+        // TODO: Colour
+        write!(&mut buf, "{val}")?;
         if buf.len() > stats.width as usize {
             buf.truncate(stats.width as usize - 3);
             buf += "...";
