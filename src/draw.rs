@@ -12,7 +12,7 @@ use arrow::{
 use chrono::TimeZone;
 use chrono_tz::Tz;
 use crossterm::*;
-use std::{cmp::Ordering, fmt::Display, io::Write};
+use std::{cmp::Ordering, collections::HashSet, fmt::Display, io::Write};
 
 pub struct RenderSettings {
     pub float_dps: usize,
@@ -32,6 +32,7 @@ pub fn draw(
     col_stats: &[ColumnStats],
     settings: &RenderSettings,
     prompt: &Prompt,
+    highlights: &HashSet<usize>,
 ) -> anyhow::Result<()> {
     stdout.queue(terminal::Clear(terminal::ClearType::All))?;
 
@@ -47,7 +48,18 @@ pub fn draw(
     stdout.queue(style::SetAttribute(style::Attribute::Dim))?;
     for x in start_row..(start_row + df.num_rows()) {
         stdout.queue(cursor::MoveToNextLine(1))?;
+        let hl = highlights.contains(&x);
+        if hl {
+            stdout
+                .queue(style::SetAttribute(style::Attribute::Reset))?
+                .queue(style::SetAttribute(style::Attribute::Bold))?;
+        }
         write!(stdout, "{}", x + 1)?;
+        if hl {
+            stdout
+                .queue(style::SetAttribute(style::Attribute::Reset))?
+                .queue(style::SetAttribute(style::Attribute::Dim))?;
+        }
     }
     stdout.queue(style::SetAttribute(style::Attribute::Reset))?;
 

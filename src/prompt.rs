@@ -1,4 +1,4 @@
-use crossterm::event::{KeyCode, MouseEvent, MouseEventKind};
+use crossterm::event::{KeyCode, MouseButton, MouseEvent, MouseEventKind};
 use std::io::Write;
 
 #[derive(Default)]
@@ -29,6 +29,7 @@ pub enum Cmd {
     Exit,
     SearchNext(String),
     SearchPrev(String),
+    ToggleHighlight(u16),
 }
 
 impl Prompt {
@@ -137,6 +138,7 @@ impl Prompt {
 
     pub fn handle_mouse(&mut self, ev: MouseEvent) -> Option<Cmd> {
         match ev.kind {
+            MouseEventKind::Down(MouseButton::Left) => Some(Cmd::ToggleHighlight(ev.row)),
             MouseEventKind::ScrollDown => Some(Cmd::RowPgDown),
             MouseEventKind::ScrollUp => Some(Cmd::RowPgUp),
             MouseEventKind::ScrollLeft => Some(Cmd::ColLeft),

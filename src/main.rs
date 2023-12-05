@@ -18,6 +18,7 @@ use bpaf::{Bpaf, Parser};
 use crossterm::tty::IsTty;
 use crossterm::*;
 use std::cmp::Ordering;
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::BufWriter;
 use std::io::{LineWriter, Write};
@@ -202,6 +203,7 @@ fn runloop(
     let mut total_rows = source.inner.row_count();
     let mut dirty = true;
     let mut col_widths = vec![];
+    let mut highlights = HashSet::<usize>::default();
 
     // Load the initial batch
     source.get_batch(0..0, 0..0, &settings)?;
@@ -254,6 +256,7 @@ fn runloop(
                     &source.col_stats[start_col..end_col],
                     &settings,
                     &prompt,
+                    &highlights,
                 )?,
                 Err(e) => error!("{e}"),
             }
@@ -302,6 +305,14 @@ fn runloop(
                     Cmd::SearchPrev(needle) => {
                         if let Some(x) = source.inner.search(&needle, start_row, true)? {
                             start_row = x;
+                        }
+                    }
+                    Cmd::ToggleHighlight(row) => {
+                        let row = start_row + row as usize - 1;
+                        if highlights.contains(&row) {
+                            highlights.remove(&row);
+                        } else {
+                            highlights.insert(row);
                         }
                     }
                     Cmd::Exit => return Ok(()),
