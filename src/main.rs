@@ -228,18 +228,18 @@ fn runloop(
                 start_row = total_rows.saturating_sub(term_size.1 as usize - 2);
             }
             let end_row = (start_row + term_size.1 as usize - 2).min(total_rows);
-            let end_col = source.col_stats[start_col..]
-                .iter()
-                .scan(idx_width, |acc, x| {
-                    *acc += x.width + 3;
-                    Some(*acc)
-                })
-                .position(|x| x > term_size.0)
-                .map(|x| x + start_col + 1)
-                .unwrap_or(source.col_stats.len());
-            // TODO: Reduce the width of the final column
+
             col_widths.clear();
-            col_widths.extend(source.col_stats[start_col..].iter().map(|s| s.ideal_width));
+            let mut remaining = term_size.0 - idx_width - 2;
+            for stats in &source.col_stats[start_col..] {
+                if remaining >= 3 {
+                    let w = stats.ideal_width.min(remaining);
+                    remaining = remaining.saturating_sub(3 + w);
+                    col_widths.push(w);
+                }
+            }
+            let end_col = start_col + col_widths.len();
+
             match source.get_batch(start_row..end_row, start_col..end_col, &settings) {
                 Ok(batch) => draw(
                     stdout,
