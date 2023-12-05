@@ -1,3 +1,10 @@
+## 0.7.0
+
+* Click rows to highlight them!
+* Better behaviour at the right-hand edge of the terminal when contents are chopped
+* Support for bool and binary column types
+* Add _experimental_ support for newline-delimited JSON (behind a feature flag)
+
 ## 0.6.0
 
 * Support reading from parquet files
