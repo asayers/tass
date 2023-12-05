@@ -269,15 +269,14 @@ fn draw_col(
 }
 
 fn unimpl(stdout: &mut impl Write, x_baseline: u16, width: u16, name: &str) -> anyhow::Result<()> {
-    stdout
-        .queue(cursor::MoveTo(x_baseline + 2, 1))?
-        .queue(style::Print(name))?
-        .queue(cursor::MoveTo(x_baseline + 2, 2))?
-        .queue(style::Print("not"))?
-        .queue(cursor::MoveTo(x_baseline + 2, 3))?
-        .queue(style::Print("implemented"))?
-        .queue(cursor::MoveTo(x_baseline + 2, 4))?
-        .queue(style::Print("yet"))?;
+    stdout.queue(cursor::MoveTo(x_baseline + 2, 1))?;
+    print_text(stdout, name, width)?;
+    stdout.queue(cursor::MoveTo(x_baseline + 2, 2))?;
+    print_text(stdout, "not", width)?;
+    stdout.queue(cursor::MoveTo(x_baseline + 2, 3))?;
+    print_text(stdout, "implemented", width)?;
+    stdout.queue(cursor::MoveTo(x_baseline + 2, 4))?;
+    print_text(stdout, "yet", width)?;
     Ok(())
 }
 
