@@ -232,7 +232,7 @@ fn runloop(
             col_widths.clear();
             let mut remaining = term_size.0 - idx_width - 2;
             for stats in &source.col_stats[start_col..] {
-                if remaining >= 3 {
+                if remaining >= 1 {
                     let w = stats.ideal_width.min(remaining);
                     remaining = remaining.saturating_sub(3 + w);
                     col_widths.push(w);

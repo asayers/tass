@@ -312,14 +312,7 @@ fn draw_utf8_col<T: OffsetSizeTrait>(
             });
             stdout.queue(style::SetForegroundColor(fg))?;
         }
-        if val.len() > width as usize {
-            let mut val = val.to_owned();
-            val.truncate(width as usize - 3);
-            val += "...";
-            stdout.write_all(val.as_bytes())?;
-        } else {
-            stdout.write_all(val.as_bytes())?;
-        }
+        print_text(stdout, val, width)?;
         if stats.cardinality.is_some() {
             stdout.queue(style::SetForegroundColor(style::Color::Reset))?;
         }
@@ -338,16 +331,12 @@ fn draw_binary_col<T: OffsetSizeTrait>(
 ) -> anyhow::Result<()> {
     for (row, val) in col.iter().enumerate() {
         let Some(val) = val else { continue };
-        let mut txt = val.escape_ascii().to_string();
+        let txt = val.escape_ascii().to_string();
         stdout.queue(cursor::MoveTo(
             x_baseline + 2,
             u16::try_from(row + 1).unwrap(),
         ))?;
-        if txt.len() > width as usize {
-            txt.truncate(width as usize - 3);
-            txt += "...";
-        }
-        stdout.write_all(txt.as_bytes())?;
+        print_text(stdout, &txt, width)?;
         if stats.cardinality.is_some() {
             stdout.queue(style::SetForegroundColor(style::Color::Reset))?;
         }
@@ -381,10 +370,6 @@ where
             buf.clear();
             use std::fmt::Write;
             write!(&mut buf, "{val}")?;
-            if buf.len() > width as usize {
-                buf.truncate(width as usize - 3);
-                buf += "...";
-            }
         }
         // right-align
         let w = (width as usize).saturating_sub(buf.len());
@@ -410,7 +395,7 @@ where
             }
             Ordering::Greater => (),
         }
-        stdout.write_all(buf.as_bytes())?;
+        print_text(stdout, &buf, width)?;
         stdout.queue(style::SetForegroundColor(style::Color::Reset))?;
     }
 
@@ -444,11 +429,7 @@ where
         if w > 0 {
             write!(stdout, "{:<w$}", " ", w = w)?;
         }
-        if buf.len() > width as usize {
-            buf.truncate(width as usize - 3);
-            buf += "...";
-        }
-        stdout.write_all(buf.as_bytes())?;
+        print_text(stdout, &buf, width)?;
     }
 
     Ok(())
@@ -474,11 +455,7 @@ fn draw_bool_col(
         use std::fmt::Write;
         // TODO: Colour
         write!(&mut buf, "{val}")?;
-        if buf.len() > width as usize {
-            buf.truncate(width as usize - 3);
-            buf += "...";
-        }
-        stdout.write_all(buf.as_bytes())?;
+        print_text(stdout, &buf, width)?;
     }
 
     Ok(())
@@ -513,11 +490,7 @@ where
         } else {
             write!(&mut buf, "{datetime}")?;
         }
-        if buf.len() > width as usize {
-            buf.truncate(width as usize - 3);
-            buf += "...";
-        }
-        stdout.write_all(buf.as_bytes())?;
+        print_text(stdout, &buf, width)?;
     }
 
     Ok(())
@@ -546,11 +519,7 @@ where
         use std::fmt::Write;
         let date = temporal_conversions::as_date::<T>(val.into()).unwrap();
         write!(&mut buf, "{date}")?;
-        if buf.len() > width as usize {
-            buf.truncate(width as usize - 3);
-            buf += "...";
-        }
-        stdout.write_all(buf.as_bytes())?;
+        print_text(stdout, &buf, width)?;
     }
 
     Ok(())
@@ -578,12 +547,22 @@ where
         use std::fmt::Write;
         let time = temporal_conversions::as_time::<T>(val.into()).unwrap();
         write!(&mut buf, "{time}")?;
-        if buf.len() > width as usize {
-            buf.truncate(width as usize - 3);
-            buf += "...";
-        }
-        stdout.write_all(buf.as_bytes())?;
+        print_text(stdout, &buf, width)?;
     }
 
+    Ok(())
+}
+
+fn print_text(stdout: &mut impl Write, txt: &str, width: u16) -> anyhow::Result<()> {
+    if txt.len() > width as usize {
+        let txt = &txt[..width as usize - 1];
+        stdout
+            .queue(style::Print(txt))?
+            .queue(style::SetAttribute(style::Attribute::Reverse))?
+            .queue(style::Print(">"))?
+            .queue(style::SetAttribute(style::Attribute::Reset))?;
+    } else {
+        stdout.queue(style::Print(txt))?;
+    }
     Ok(())
 }
