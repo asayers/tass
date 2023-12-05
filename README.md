@@ -5,8 +5,9 @@ It's like `less`, but for CSV and parquet files!  It looks like this:
 
 <img src="https://github.com/asayers/tass/raw/master/demo.png">
 
-The first column only contains a small number of unique values, so tass colour-codes them.
-The other columns are numerical, so tass right-aligns them and shows negative values in red.
+The fourth and fifth columns only contains a small number of unique values,
+so tass colour-codes them automatically. The columns to the right of those are
+numerical, so tass right-aligns them and shows negative values in red.
 
 <img src="https://github.com/asayers/tass/raw/master/demo.gif">
 
