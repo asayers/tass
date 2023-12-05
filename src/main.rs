@@ -199,6 +199,7 @@ fn runloop(
     let mut file_refresh_interval = Duration::from_millis(10);
     let mut last_file_refresh = Instant::now();
     let mut total_rows = source.inner.row_count();
+    let mut dirty = true;
 
     // Load the initial batch
     source.get_batch(0..0, 0..0, &settings)?;
@@ -211,42 +212,47 @@ fn runloop(
             } else {
                 total_rows = source.inner.row_count();
                 file_refresh_interval = Duration::from_millis(10);
+                dirty = true;
             }
             last_file_refresh = Instant::now();
         }
-        let idx_width = if total_rows == 0 {
-            0
-        } else {
-            total_rows.ilog10() as u16
-        } + 1;
-        if prompt.is_following() {
-            start_row = total_rows.saturating_sub(term_size.1 as usize - 2);
-        }
-        let end_row = (start_row + term_size.1 as usize - 2).min(total_rows);
-        let end_col = source.col_stats[start_col..]
-            .iter()
-            .scan(idx_width, |acc, x| {
-                *acc += x.width + 3;
-                Some(*acc)
-            })
-            .position(|x| x > term_size.0)
-            .map(|x| x + start_col + 1)
-            .unwrap_or(source.col_stats.len());
-        // TODO: Reduce the width of the final column
-        match source.get_batch(start_row..end_row, start_col..end_col, &settings) {
-            Ok(batch) => draw(
-                stdout,
-                start_row,
-                batch,
-                term_size.0,
-                term_size.1,
-                idx_width,
-                total_rows,
-                &source.col_stats[start_col..end_col],
-                &settings,
-                &prompt,
-            )?,
-            Err(e) => error!("{e}"),
+
+        if dirty {
+            let idx_width = if total_rows == 0 {
+                0
+            } else {
+                total_rows.ilog10() as u16
+            } + 1;
+            if prompt.is_following() {
+                start_row = total_rows.saturating_sub(term_size.1 as usize - 2);
+            }
+            let end_row = (start_row + term_size.1 as usize - 2).min(total_rows);
+            let end_col = source.col_stats[start_col..]
+                .iter()
+                .scan(idx_width, |acc, x| {
+                    *acc += x.width + 3;
+                    Some(*acc)
+                })
+                .position(|x| x > term_size.0)
+                .map(|x| x + start_col + 1)
+                .unwrap_or(source.col_stats.len());
+            // TODO: Reduce the width of the final column
+            match source.get_batch(start_row..end_row, start_col..end_col, &settings) {
+                Ok(batch) => draw(
+                    stdout,
+                    start_row,
+                    batch,
+                    term_size.0,
+                    term_size.1,
+                    idx_width,
+                    total_rows,
+                    &source.col_stats[start_col..end_col],
+                    &settings,
+                    &prompt,
+                )?,
+                Err(e) => error!("{e}"),
+            }
+            dirty = false;
         }
 
         if event::poll(file_refresh_interval)? {
@@ -299,6 +305,7 @@ fn runloop(
                 event::Event::Resize(cols, rows) => term_size = (cols, rows),
                 _ => (),
             }
+            dirty = true;
         }
     }
 }
