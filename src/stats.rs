@@ -1,6 +1,6 @@
 use crate::draw::RenderSettings;
 use arrow::{
-    array::{Array, GenericStringArray, OffsetSizeTrait, PrimitiveArray},
+    array::{Array, GenericBinaryArray, GenericStringArray, OffsetSizeTrait, PrimitiveArray},
     datatypes::*,
 };
 
@@ -71,10 +71,10 @@ impl ColumnStats {
 
             DataType::Utf8 => ColumnStats::new_string::<i32>(col!())?,
             DataType::LargeUtf8 => ColumnStats::new_string::<i64>(col!())?,
-            DataType::Binary => ColumnStats::fixed_len(15), // TODO
+            DataType::Binary => ColumnStats::new_binary::<i32>(col!())?,
+            DataType::LargeBinary => ColumnStats::new_binary::<i64>(col!())?,
             DataType::FixedSizeBinary(_) => ColumnStats::fixed_len(15), // TODO
-            DataType::LargeBinary => ColumnStats::fixed_len(15), // TODO
-            DataType::Dictionary(_, _) => ColumnStats::fixed_len(15), // TODO
+            DataType::Dictionary(_, _) => ColumnStats::fixed_len(15),   // TODO
 
             DataType::Date32 | DataType::Date64 => ColumnStats::fixed_len(10), // YYYY-MM-DD
             DataType::Time32(unit) | DataType::Time64(unit) => ColumnStats::fixed_len(match unit {
@@ -173,6 +173,7 @@ impl ColumnStats {
     }
 
     fn new_string<T: OffsetSizeTrait>(col: &GenericStringArray<T>) -> anyhow::Result<ColumnStats> {
+        // FIXME: This is an approximation to the rendered length
         let lens = arrow::compute::kernels::length::length(col)?;
         let max_len = match lens.data_type() {
             DataType::Int32 => {
@@ -193,6 +194,27 @@ impl ColumnStats {
             min_max: None,
             width: max_len,
             cardinality: u8::try_from(unique_vals.len()).ok(),
+        })
+    }
+
+    fn new_binary<T: OffsetSizeTrait>(col: &GenericBinaryArray<T>) -> anyhow::Result<ColumnStats> {
+        // FIXME: This is an approximation to the rendered length
+        let lens = arrow::compute::kernels::length::length(col)?;
+        let max_len = match lens.data_type() {
+            DataType::Int32 => {
+                arrow::compute::max::<Int32Type>(lens.as_any().downcast_ref().unwrap()).unwrap_or(0)
+                    as u16
+            }
+            DataType::Int64 => {
+                arrow::compute::max::<Int64Type>(lens.as_any().downcast_ref().unwrap()).unwrap_or(0)
+                    as u16
+            }
+            _ => unreachable!(),
+        };
+        Ok(ColumnStats {
+            min_max: None,
+            width: max_len,
+            cardinality: None,
         })
     }
 

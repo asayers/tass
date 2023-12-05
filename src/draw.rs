@@ -1,7 +1,10 @@
 use crate::prompt::Prompt;
 use crate::stats::*;
 use arrow::{
-    array::{Array, BooleanArray, GenericStringArray, OffsetSizeTrait, PrimitiveArray},
+    array::{
+        Array, BooleanArray, GenericBinaryArray, GenericStringArray, OffsetSizeTrait,
+        PrimitiveArray,
+    },
     datatypes::*,
     record_batch::RecordBatch,
     temporal_conversions,
@@ -206,9 +209,11 @@ fn draw_col(
         }
         DataType::Duration(_) => unimpl(stdout, x_baseline, "Duration"),
         DataType::Interval(_) => unimpl(stdout, x_baseline, "Interval"),
-        DataType::Binary => unimpl(stdout, x_baseline, "Binary"),
+        DataType::Binary => draw_binary_col::<i32>(stdout, stats, x_baseline, col!(), settings),
+        DataType::LargeBinary => {
+            draw_binary_col::<i64>(stdout, stats, x_baseline, col!(), settings)
+        }
         DataType::FixedSizeBinary(_) => unimpl(stdout, x_baseline, "FixedSizeBinary"),
-        DataType::LargeBinary => unimpl(stdout, x_baseline, "LargeBinary"),
         DataType::List(_) => unimpl(stdout, x_baseline, "List"),
         DataType::FixedSizeList(_, _) => unimpl(stdout, x_baseline, "FixedSizeList"),
         DataType::LargeList(_) => unimpl(stdout, x_baseline, "LargeList"),
@@ -273,6 +278,33 @@ fn draw_utf8_col<T: OffsetSizeTrait>(
         } else {
             stdout.write_all(val.as_bytes())?;
         }
+        if stats.cardinality.is_some() {
+            stdout.queue(style::SetForegroundColor(style::Color::Reset))?;
+        }
+    }
+
+    Ok(())
+}
+
+fn draw_binary_col<T: OffsetSizeTrait>(
+    stdout: &mut impl Write,
+    stats: &ColumnStats,
+    x_baseline: u16,
+    col: &GenericBinaryArray<T>,
+    _settings: &RenderSettings,
+) -> anyhow::Result<()> {
+    for (row, val) in col.iter().enumerate() {
+        let Some(val) = val else { continue };
+        let mut txt = val.escape_ascii().to_string();
+        stdout.queue(cursor::MoveTo(
+            x_baseline + 2,
+            u16::try_from(row + 1).unwrap(),
+        ))?;
+        if txt.len() > stats.width as usize {
+            txt.truncate(stats.width as usize - 3);
+            txt += "...";
+        }
+        stdout.write_all(txt.as_bytes())?;
         if stats.cardinality.is_some() {
             stdout.queue(style::SetForegroundColor(style::Color::Reset))?;
         }
