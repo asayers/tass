@@ -93,19 +93,19 @@ impl CsvFile {
 }
 
 impl DataSource for CsvFile {
-    fn check_for_new_rows(&mut self) -> anyhow::Result<bool> {
+    fn check_for_new_rows(&mut self) -> anyhow::Result<usize> {
         let n_bytes_then = self.fs.end_pos();
         self.fs.expand();
         let n_bytes_now = self.fs.end_pos();
         if n_bytes_now == n_bytes_then {
-            return Ok(false);
+            return Ok(0);
         }
         debug!("File size has changed! ({n_bytes_then} -> {n_bytes_now})");
 
         if self.schema.fields().is_empty() {
             match self.read_header() {
                 Ok(()) => (),
-                Err(_) => return Ok(false),
+                Err(_) => return Ok(0),
             }
         }
 
@@ -118,7 +118,7 @@ impl DataSource for CsvFile {
             self.fs = self.fs.slice(..x);
         }
 
-        Ok(true)
+        Ok(n)
     }
 
     fn row_count(&self) -> usize {

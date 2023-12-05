@@ -23,9 +23,8 @@ impl ParquetFile {
 }
 
 impl DataSource for ParquetFile {
-    fn check_for_new_rows(&mut self) -> anyhow::Result<bool> {
-        // TODO
-        Ok(false)
+    fn check_for_new_rows(&mut self) -> anyhow::Result<usize> {
+        Ok(0)
     }
 
     fn row_count(&self) -> usize {

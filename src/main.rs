@@ -111,7 +111,7 @@ struct CachedSource {
 }
 
 trait DataSource {
-    fn check_for_new_rows(&mut self) -> anyhow::Result<bool>;
+    fn check_for_new_rows(&mut self) -> anyhow::Result<usize>;
     fn row_count(&self) -> usize;
     fn fetch_batch(&mut self, offset: usize, len: usize) -> anyhow::Result<RecordBatch>;
     fn search(&self, needle: &str, from: usize, rev: bool) -> anyhow::Result<Option<usize>>;
@@ -204,10 +204,11 @@ fn runloop(
 
     loop {
         if last_file_refresh.elapsed() > file_refresh_interval {
-            if source.inner.check_for_new_rows()? {
-                file_refresh_interval = Duration::from_millis(10);
-            } else {
+            let new_rows = source.inner.check_for_new_rows()?;
+            if new_rows == 0 {
                 file_refresh_interval = (file_refresh_interval * 10).min(Duration::from_secs(1));
+            } else {
+                file_refresh_interval = Duration::from_millis(10);
             }
             last_file_refresh = Instant::now();
         }

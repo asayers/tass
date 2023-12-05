@@ -98,11 +98,11 @@ impl JsonFile {
 }
 
 impl DataSource for JsonFile {
-    fn check_for_new_rows(&mut self) -> anyhow::Result<bool> {
+    fn check_for_new_rows(&mut self) -> anyhow::Result<usize> {
         let n_bytes_then = self.n_bytes();
         let n_bytes_now = self.file.metadata()?.len();
         if n_bytes_now == n_bytes_then {
-            return Ok(false);
+            return Ok(0);
         }
         debug!("File size has changed! ({n_bytes_then} -> {n_bytes_now})");
         self.fs = FileSlice::new(self.file.try_clone()?);
@@ -115,7 +115,7 @@ impl DataSource for JsonFile {
             self.fs = self.fs.slice(0, *self.row_offsets.last().unwrap());
         }
 
-        Ok(true)
+        Ok(n)
     }
 
     fn row_count(&self) -> usize {
