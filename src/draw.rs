@@ -139,21 +139,8 @@ fn draw_col(
 
     match col.data_type() {
         DataType::Null => Ok(()),
-        DataType::Utf8 => draw_utf8_col::<i32>(
-            stdout,
-            x_baseline,
-            width,
-            col!(),
-            stats.cardinality.is_some(),
-        ),
-        DataType::LargeUtf8 => draw_utf8_col::<i64>(
-            stdout,
-            x_baseline,
-            width,
-            col!(),
-            stats.cardinality.is_some(),
-        ),
         DataType::Boolean => draw_bool_col(stdout, x_baseline, width, col!()),
+
         DataType::Int8 => draw_int_col::<Int8Type>(stdout, x_baseline, width, col!()),
         DataType::Int16 => draw_int_col::<Int16Type>(stdout, x_baseline, width, col!()),
         DataType::Int32 => draw_int_col::<Int32Type>(stdout, x_baseline, width, col!()),
@@ -171,6 +158,9 @@ fn draw_col(
         DataType::Float64 => {
             draw_float_col::<Float64Type>(stdout, x_baseline, width, col!(), settings)
         }
+        DataType::Decimal128(_, _) => unimpl(stdout, x_baseline, width, "Decimal128"),
+        DataType::Decimal256(_, _) => unimpl(stdout, x_baseline, width, "Decimal256"),
+
         DataType::Timestamp(TimeUnit::Second, tz) => draw_timestamp_col::<TimestampSecondType>(
             stdout,
             x_baseline,
@@ -227,17 +217,32 @@ fn draw_col(
         }
         DataType::Duration(_) => unimpl(stdout, x_baseline, width, "Duration"),
         DataType::Interval(_) => unimpl(stdout, x_baseline, width, "Interval"),
+
+        DataType::Utf8 => draw_utf8_col::<i32>(
+            stdout,
+            x_baseline,
+            width,
+            col!(),
+            stats.cardinality.is_some(),
+        ),
+        DataType::LargeUtf8 => draw_utf8_col::<i64>(
+            stdout,
+            x_baseline,
+            width,
+            col!(),
+            stats.cardinality.is_some(),
+        ),
+
         DataType::Binary => draw_binary_col::<i32>(stdout, x_baseline, width, col!()),
         DataType::LargeBinary => draw_binary_col::<i64>(stdout, x_baseline, width, col!()),
         DataType::FixedSizeBinary(_) => unimpl(stdout, x_baseline, width, "FixedSizeBinary"),
+
         DataType::List(_) => unimpl(stdout, x_baseline, width, "List"),
         DataType::FixedSizeList(_, _) => unimpl(stdout, x_baseline, width, "FixedSizeList"),
         DataType::LargeList(_) => unimpl(stdout, x_baseline, width, "LargeList"),
         DataType::Struct(_) => unimpl(stdout, x_baseline, width, "Struct"),
         DataType::Union(_, _) => unimpl(stdout, x_baseline, width, "Union"),
         DataType::Dictionary(_, _) => unimpl(stdout, x_baseline, width, "Dictionary"),
-        DataType::Decimal128(_, _) => unimpl(stdout, x_baseline, width, "Decimal128"),
-        DataType::Decimal256(_, _) => unimpl(stdout, x_baseline, width, "Decimal256"),
         DataType::Map(_, _) => unimpl(stdout, x_baseline, width, "Map"),
         DataType::RunEndEncoded(_, _) => unimpl(stdout, x_baseline, width, "RunEndEncoded"),
     }
