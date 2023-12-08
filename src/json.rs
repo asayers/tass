@@ -6,13 +6,12 @@ use arrow::json::ReaderBuilder;
 use arrow::record_batch::RecordBatch;
 use fileslice::FileSlice;
 use std::fs::File;
-use std::io::{BufRead, BufReader, Seek, SeekFrom};
+use std::io::{BufRead, BufReader};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tracing::{debug, error, info, warn};
 
 pub struct JsonFile {
-    file: File, // Keep this around for re-generating the fileslice.  TODO: Add FileSlice::refresh()
     fs: FileSlice,
     /// The nth row begins at byte `row_offsets[n]` in `fs`
     row_offsets: Vec<u64>,
@@ -23,22 +22,17 @@ impl JsonFile {
     pub fn new(file: File) -> anyhow::Result<JsonFile> {
         warn!("JSON support is experimental");
         Ok(JsonFile {
-            fs: FileSlice::new(file.try_clone()?).slice(0, 0),
-            file,
+            fs: FileSlice::new(file.try_clone()?).slice(0..0),
             row_offsets: vec![],
             schema: Schema::empty().into(),
         })
-    }
-
-    fn n_bytes(&self) -> u64 {
-        self.fs.clone().seek(SeekFrom::End(0)).unwrap()
     }
 
     // TODO: Optimize (memchr + mmap?)
     fn add_new_lines(&mut self) -> anyhow::Result<usize> {
         let n_rows_then = self.row_count();
         let mut line_start = self.row_offsets.last().copied().unwrap_or(0);
-        let new_lines = BufReader::new(self.fs.slice(line_start, self.n_bytes())).lines();
+        let new_lines = BufReader::new(self.fs.slice(line_start..)).lines();
         let start = Instant::now();
         for line in new_lines {
             line_start += line?.len() as u64 + 1;
@@ -99,20 +93,21 @@ impl JsonFile {
 
 impl DataSource for JsonFile {
     fn check_for_new_rows(&mut self) -> anyhow::Result<usize> {
-        let n_bytes_then = self.n_bytes();
-        let n_bytes_now = self.file.metadata()?.len();
+        let n_bytes_then = self.fs.end_pos();
+        self.fs.expand();
+        let n_bytes_now = self.fs.end_pos();
         if n_bytes_now == n_bytes_then {
             return Ok(0);
         }
         debug!("File size has changed! ({n_bytes_then} -> {n_bytes_now})");
-        self.fs = FileSlice::new(self.file.try_clone()?);
 
         let n = self.add_new_lines()?;
         debug!("Added {n} new rows");
         if n == 0 {
             error!("Caught up with the EOF");
         } else {
-            self.fs = self.fs.slice(0, *self.row_offsets.last().unwrap());
+            let x = *self.row_offsets.last().unwrap();
+            self.fs = self.fs.slice(..x);
         }
 
         Ok(n)
@@ -124,15 +119,18 @@ impl DataSource for JsonFile {
 
     fn fetch_batch(&mut self, offset: usize, len: usize) -> anyhow::Result<RecordBatch> {
         debug!(offset, len, "Fetching a batch");
-        let byte_start = self
-            .row_offsets
-            .get(offset)
-            .copied()
-            .unwrap_or_else(|| self.n_bytes());
-        let slice = self.fs.slice(byte_start, self.n_bytes());
-        debug!(byte_start, "Sliced the file");
+        let row_to_byte = |row: usize| -> u64 {
+            self.row_offsets
+                .get(row)
+                .copied()
+                .unwrap_or_else(|| self.fs.end_pos())
+        };
+        let byte_start = row_to_byte(offset);
+        let byte_end = row_to_byte(offset + len + 1);
+        let slice = self.fs.slice(byte_start..byte_end);
+        debug!(byte_start, byte_end, "Sliced the file");
 
-        let (schema, _) = infer_json_schema(BufReader::new(slice.clone()), None)?;
+        let (schema, _n_rows) = infer_json_schema(BufReader::new(slice.clone()), None)?;
         self.merge_schema(schema);
 
         let mut rdr = ReaderBuilder::new(self.schema.clone())
