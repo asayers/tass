@@ -158,8 +158,8 @@ fn draw_col(
         DataType::Float64 => {
             draw_float_col::<Float64Type>(stdout, x_baseline, width, col!(), settings)
         }
-        DataType::Decimal128(_, _) => unimpl(stdout, x_baseline, width, "Decimal128"),
-        DataType::Decimal256(_, _) => unimpl(stdout, x_baseline, width, "Decimal256"),
+        DataType::Decimal128(_, _) => fallback(stdout, x_baseline, width, col),
+        DataType::Decimal256(_, _) => fallback(stdout, x_baseline, width, col),
 
         DataType::Timestamp(TimeUnit::Second, tz) => draw_timestamp_col::<TimestampSecondType>(
             stdout,
@@ -215,8 +215,8 @@ fn draw_col(
         DataType::Time64(TimeUnit::Nanosecond) => {
             draw_time_col::<Time64NanosecondType>(stdout, x_baseline, width, col!())
         }
-        DataType::Duration(_) => unimpl(stdout, x_baseline, width, "Duration"),
-        DataType::Interval(_) => unimpl(stdout, x_baseline, width, "Interval"),
+        DataType::Duration(_) => fallback(stdout, x_baseline, width, col),
+        DataType::Interval(_) => fallback(stdout, x_baseline, width, col),
 
         DataType::Utf8 => draw_utf8_col::<i32>(
             stdout,
@@ -235,28 +235,36 @@ fn draw_col(
 
         DataType::Binary => draw_binary_col::<i32>(stdout, x_baseline, width, col!()),
         DataType::LargeBinary => draw_binary_col::<i64>(stdout, x_baseline, width, col!()),
-        DataType::FixedSizeBinary(_) => unimpl(stdout, x_baseline, width, "FixedSizeBinary"),
+        DataType::FixedSizeBinary(_) => fallback(stdout, x_baseline, width, col),
 
-        DataType::List(_) => unimpl(stdout, x_baseline, width, "List"),
-        DataType::FixedSizeList(_, _) => unimpl(stdout, x_baseline, width, "FixedSizeList"),
-        DataType::LargeList(_) => unimpl(stdout, x_baseline, width, "LargeList"),
-        DataType::Struct(_) => unimpl(stdout, x_baseline, width, "Struct"),
-        DataType::Union(_, _) => unimpl(stdout, x_baseline, width, "Union"),
-        DataType::Dictionary(_, _) => unimpl(stdout, x_baseline, width, "Dictionary"),
-        DataType::Map(_, _) => unimpl(stdout, x_baseline, width, "Map"),
-        DataType::RunEndEncoded(_, _) => unimpl(stdout, x_baseline, width, "RunEndEncoded"),
+        DataType::List(_) => fallback(stdout, x_baseline, width, col),
+        DataType::FixedSizeList(_, _) => fallback(stdout, x_baseline, width, col),
+        DataType::LargeList(_) => fallback(stdout, x_baseline, width, col),
+        DataType::Struct(_) => fallback(stdout, x_baseline, width, col),
+        DataType::Union(_, _) => fallback(stdout, x_baseline, width, col),
+        DataType::Dictionary(_, _) => fallback(stdout, x_baseline, width, col),
+        DataType::Map(_, _) => fallback(stdout, x_baseline, width, col),
+        DataType::RunEndEncoded(_, _) => fallback(stdout, x_baseline, width, col),
     }
 }
 
-fn unimpl(stdout: &mut impl Write, x_baseline: u16, width: u16, name: &str) -> anyhow::Result<()> {
-    stdout.queue(cursor::MoveTo(x_baseline + 2, 1))?;
-    print_text(stdout, name, width)?;
-    stdout.queue(cursor::MoveTo(x_baseline + 2, 2))?;
-    print_text(stdout, "not", width)?;
-    stdout.queue(cursor::MoveTo(x_baseline + 2, 3))?;
-    print_text(stdout, "implemented", width)?;
-    stdout.queue(cursor::MoveTo(x_baseline + 2, 4))?;
-    print_text(stdout, "yet", width)?;
+fn fallback(
+    stdout: &mut impl Write,
+    x_baseline: u16,
+    width: u16,
+    col: &dyn Array,
+) -> anyhow::Result<()> {
+    use arrow::util::display::*;
+    let options = FormatOptions::default();
+    let formatter = ArrayFormatter::try_new(col, &options)?;
+    for row in 0..col.len() {
+        let txt = formatter.value(row).to_string();
+        stdout.queue(cursor::MoveTo(
+            x_baseline + 2,
+            u16::try_from(row + 1).unwrap(),
+        ))?;
+        print_text(stdout, &txt, width)?;
+    }
     Ok(())
 }
 
