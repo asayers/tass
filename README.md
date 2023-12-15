@@ -5,15 +5,16 @@ It's like `less`, but for CSV and parquet files!  It looks like this:
 
 <img src="https://github.com/asayers/tass/raw/master/demo.png">
 
-The fourth and fifth columns only contains a small number of unique values,
-so tass colour-codes them automatically. The columns to the right of those are
-numerical, so tass right-aligns them and shows negative values in red.
+You can see tass's schema inference in action here. The fourth and fifth
+columns only contains a small number of unique values, so tass colour-codes
+them automatically. The columns to the right of those are numerical, so tass
+right-aligns them and shows negative values in red.
 
 <img src="https://github.com/asayers/tass/raw/master/demo.gif">
 
-This demo shows data being piped into (an older version of) tass.
-You can also open files which are still being appeanded to;
-new rows appear as the file grows.
+This demo shows data being piped into (an older version of) tass. You can also
+open files which are still being appeanded to, and new rows will appear as the
+file grows.
 
 ## Installing
 
@@ -47,12 +48,12 @@ number <kbd>g</kbd>                               | Move to line `$number`
 
 ## Comparison to other tools
 
-Tool                             | Functionality                                   | Filetypes               | Streaming | File size
----------------------------------|-------------------------------------------------|-------------------------|-----------|------------------------------------
-tass                             | ⭐ Viewing data, basic searching and filtering  | CSV, parquet            | yes       | Large (bigger than memory is fine)
-[csvlens]                        | ⭐ Appears to be very similar to tass           | CSV, TSV                | yes       | ?
-[VisiData]                       | ⭐⭐ Summary stats, plots, etc.                 | CSV, JSON, parquet, ... | yes       | Medium (up to perhaps 50% of memory)
-Excel/Calc/Numbers/Google Sheets | ⭐⭐⭐ It's a spreadsheet!                      | CSV, xls, ods, ...      | no        | Small (1M row limit)
+Tool                             | Functionality                      | Filetypes               | Loads whole file into memory | Streaming 
+---------------------------------|------------------------------------|-------------------------|------------------------------|-----------
+tass                             | ⭐ Viewing data, basic searching   | CSV, parquet            | no 😌                        | ✔️ 
+[csvlens]                        | ⭐ Similar to tass                 | CSV, TSV                | no 😌                        | ✔️ 
+[VisiData]                       | ⭐⭐ Summary stats, plots, etc.    | CSV, parquet, JSON, ... | yes 😱                       | ✔️ 
+Excel/Calc/Numbers/Google Sheets | ⭐⭐⭐ It's a spreadsheet!         | CSV, xls, ods, ...      | yes 😱                       |
 
 My advice is to use the most full-featured tool you can get away with.
 However, if you _are_ cursed with multi-gigabyte CSV files, then your options
