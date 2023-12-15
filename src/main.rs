@@ -131,12 +131,13 @@ impl CachedSource {
         }
     }
 
-    fn get_batch(
+    /// If this returns `Ok`, the requested rows should now be available - ie.
+    /// you can pass the range into `get_batch()`.
+    fn ensure_available(
         &mut self,
         rows: Range<usize>,
-        mut cols: Range<usize>,
         settings: &RenderSettings,
-    ) -> anyhow::Result<RecordBatch> {
+    ) -> anyhow::Result<()> {
         let all_rows_available = self.available_rows.contains(&rows.start)
             && self.available_rows.contains(&(rows.end - 1));
         if !all_rows_available {
@@ -180,7 +181,10 @@ impl CachedSource {
             cols.start = cols.start.min(self.available_cols.len());
             cols.end = cols.end.min(self.available_cols.len());
         }
+        Ok(())
+    }
 
+    fn get_batch(&self, rows: Range<usize>, cols: Range<usize>) -> anyhow::Result<RecordBatch> {
         let enabled_cols = &self.available_cols[cols];
         let offset = rows.start - self.available_rows.start;
         let len = rows.end.min(self.available_rows.end) - rows.start;
@@ -206,7 +210,7 @@ fn runloop(
     let mut highlights = HashSet::<usize>::default();
 
     // Load the initial batch
-    source.get_batch(0..0, 0..0, &settings)?;
+    source.ensure_available(0..0, &settings)?;
 
     loop {
         if last_file_refresh.elapsed() > file_refresh_interval {
@@ -243,6 +247,7 @@ fn runloop(
             }
             let end_col = start_col + col_widths.len();
 
+            source.ensure_available(start_row..end_row, &settings)?;
             let batch = source.get_batch(start_row..end_row, start_col..end_col, &settings)?;
             draw(
                 stdout,
