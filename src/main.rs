@@ -140,47 +140,50 @@ impl CachedSource {
     ) -> anyhow::Result<()> {
         let all_rows_available = self.available_rows.contains(&rows.start)
             && self.available_rows.contains(&(rows.end - 1));
-        if !all_rows_available {
-            debug!("Requested: {rows:?}; available: {:?}", self.available_rows);
-            let start = Instant::now();
-            let from = rows.start.saturating_sub(CHUNK_SIZE / 2);
-            self.big_df = self.inner.fetch_batch(from, CHUNK_SIZE)?;
-            self.available_rows = from..(from + self.big_df.num_rows());
-            debug!(took=?start.elapsed(),
-                "Loaded a new batch (rows {:?}, {} MiB)",
-                self.available_rows,
-                self.big_df.get_array_memory_size() / 1024 / 1024,
-            );
-
-            let start = Instant::now();
-            for (idx, (field, col)) in self
-                .big_df
-                .schema()
-                .fields()
-                .iter()
-                .zip(self.big_df.columns())
-                .enumerate()
-            {
-                let new_stats = ColumnStats::new(field.name(), col, settings)?;
-                match idx.cmp(&self.all_col_stats.len()) {
-                    Ordering::Less => self.all_col_stats[idx].merge(new_stats),
-                    Ordering::Equal => self.all_col_stats.push(new_stats),
-                    Ordering::Greater => panic!(),
-                }
-            }
-            self.col_stats.clear();
-            self.available_cols.clear();
-            for (idx, col) in self.big_df.columns().iter().enumerate() {
-                if !settings.hide_empty || col.null_count() < col.len() {
-                    self.available_cols.push(idx);
-                    self.col_stats.push(self.all_col_stats[idx].clone());
-                }
-            }
-            debug!(took=?start.elapsed(), "Refined the stats");
-
-            cols.start = cols.start.min(self.available_cols.len());
-            cols.end = cols.end.min(self.available_cols.len());
+        if all_rows_available {
+            return Ok(());
         }
+
+        debug!("Requested: {rows:?}; available: {:?}", self.available_rows);
+        let start = Instant::now();
+        let from = rows.start.saturating_sub(CHUNK_SIZE / 2);
+        self.big_df = self.inner.fetch_batch(from, CHUNK_SIZE)?;
+        self.available_rows = from..(from + self.big_df.num_rows());
+        debug!(took=?start.elapsed(),
+            "Loaded a new batch (rows {:?}, {} MiB)",
+            self.available_rows,
+            self.big_df.get_array_memory_size() / 1024 / 1024,
+        );
+
+        let start = Instant::now();
+        for (idx, (field, col)) in self
+            .big_df
+            .schema()
+            .fields()
+            .iter()
+            .zip(self.big_df.columns())
+            .enumerate()
+        {
+            let new_stats = ColumnStats::new(field.name(), col, settings)?;
+            match idx.cmp(&self.all_col_stats.len()) {
+                Ordering::Less => self.all_col_stats[idx].merge(new_stats),
+                Ordering::Equal => self.all_col_stats.push(new_stats),
+                Ordering::Greater => panic!(),
+            }
+        }
+        self.col_stats.clear();
+        self.available_cols.clear();
+        for (idx, col) in self.big_df.columns().iter().enumerate() {
+            if !settings.hide_empty || col.null_count() < col.len() {
+                self.available_cols.push(idx);
+                self.col_stats.push(self.all_col_stats[idx].clone());
+            }
+        }
+        debug!(took=?start.elapsed(), "Refined the stats");
+
+        cols.start = cols.start.min(self.available_cols.len());
+        cols.end = cols.end.min(self.available_cols.len());
+
         Ok(())
     }
 
