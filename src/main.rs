@@ -26,7 +26,6 @@ use std::ops::Range;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 use tracing::debug;
-use tracing::error;
 
 /// A pager for tabular data
 ///
@@ -244,23 +243,21 @@ fn runloop(
             }
             let end_col = start_col + col_widths.len();
 
-            match source.get_batch(start_row..end_row, start_col..end_col, &settings) {
-                Ok(batch) => draw(
-                    stdout,
-                    start_row,
-                    batch,
-                    term_size.0,
-                    term_size.1,
-                    idx_width,
-                    &col_widths,
-                    total_rows,
-                    &source.col_stats[start_col..end_col],
-                    &settings,
-                    &prompt,
-                    &highlights,
-                )?,
-                Err(e) => error!("{e}"),
-            }
+            let batch = source.get_batch(start_row..end_row, start_col..end_col, &settings)?;
+            draw(
+                stdout,
+                start_row,
+                batch,
+                term_size.0,
+                term_size.1,
+                idx_width,
+                &col_widths,
+                total_rows,
+                &source.col_stats[start_col..end_col],
+                &settings,
+                &prompt,
+                &highlights,
+            )?;
             dirty = false;
         }
 
