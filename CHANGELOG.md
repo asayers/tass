@@ -1,3 +1,9 @@
+## 0.8.0
+
+* Add fallback rendering for all column types
+* Fix a bug where the grid would be empty until you hit a button
+* Fix a bug where the terminal would capture mouse events after exit
+
 ## 0.7.0
 
 * Click rows to highlight them!
