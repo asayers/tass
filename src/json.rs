@@ -83,6 +83,7 @@ impl JsonFile {
                     }
                     _ => new.clone(),
                 };
+                info!("New field {}: {}", new.name(), new.data_type());
                 bldr.push(new);
             }
         }

@@ -13,6 +13,7 @@ use chrono::TimeZone;
 use chrono_tz::Tz;
 use crossterm::*;
 use std::{cmp::Ordering, collections::HashSet, fmt::Display, io::Write};
+use tracing::debug;
 
 pub struct RenderSettings {
     pub float_dps: usize,
@@ -34,6 +35,12 @@ pub fn draw(
     prompt: &Prompt,
     highlights: &HashSet<usize>,
 ) -> anyhow::Result<()> {
+    debug!(
+        n_rows = df.num_rows(),
+        n_cols = df.num_columns(),
+        "Repainting!",
+    );
+
     stdout.queue(terminal::Clear(terminal::ClearType::All))?;
 
     // Draw the box in the top-left

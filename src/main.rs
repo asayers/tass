@@ -184,6 +184,7 @@ impl CachedSource {
     }
 
     fn get_batch(&self, rows: Range<usize>, cols: Range<usize>) -> anyhow::Result<RecordBatch> {
+        debug!(?rows, ?cols, "Slicing big df");
         let enabled_cols = &self.available_cols[cols];
         let offset = rows.start - self.available_rows.start;
         let len = rows.end.min(self.available_rows.end) - rows.start;
