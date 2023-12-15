@@ -11,7 +11,7 @@ repository = "https://github.com/asayers/tass"
 [dependencies]
 anyhow = { version = "1.0.75", features = ["backtrace"] }
 arrow = { version = "49", features = ["chrono-tz"] }
-bpaf = { version = "0.9.6", features = ["derive"] }
+bpaf = { version = "0.9.8", features = ["derive"] }
 chrono = "0.4.31"
 chrono-tz = "0.8.4"
 crossterm = "0.27.0"
