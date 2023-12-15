@@ -93,6 +93,7 @@ fn main() -> anyhow::Result<()> {
 
     // Clean up terminal
     stdout
+        .queue(event::DisableMouseCapture)?
         .queue(terminal::EnableLineWrap)?
         .queue(terminal::LeaveAlternateScreen)?
         .flush()?;
