@@ -234,10 +234,13 @@ fn runloop(
             } else {
                 total_rows.ilog10() as u16
             } + 1;
+
             if prompt.is_following() {
                 start_row = total_rows.saturating_sub(term_size.1 as usize - 2);
             }
             let end_row = (start_row + term_size.1 as usize - 2).min(total_rows);
+            let rows = start_row..end_row;
+            source.ensure_available(rows.clone(), &settings)?;
 
             col_widths.clear();
             let mut remaining = term_size.0 - idx_width - 2;
@@ -249,9 +252,9 @@ fn runloop(
                 }
             }
             let end_col = start_col + col_widths.len();
+            let cols = start_col..end_col;
 
-            source.ensure_available(start_row..end_row, &settings)?;
-            let batch = source.get_batch(start_row..end_row, start_col..end_col, &settings)?;
+            let batch = source.get_batch(rows, cols.clone())?;
             draw(
                 stdout,
                 start_row,
@@ -261,7 +264,7 @@ fn runloop(
                 idx_width,
                 &col_widths,
                 total_rows,
-                &source.col_stats[start_col..end_col],
+                &source.col_stats[cols],
                 &settings,
                 &prompt,
                 &highlights,
