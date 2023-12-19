@@ -52,29 +52,7 @@ fn main() -> anyhow::Result<()> {
         hide_empty: opts.hide_empty,
     };
 
-    let (file, ext) = match &opts.path {
-        Some(x) => (File::open(x)?, x.extension().and_then(|x| x.to_str())),
-        None => {
-            let mut stdin = std::io::stdin();
-            if stdin.is_tty() {
-                bail!("Need to specify a filename or feed data to stdin");
-            }
-            let tmpfile = tempfile::tempfile()?;
-            let mut wtr = LineWriter::new(tmpfile.try_clone()?);
-            std::thread::spawn(move || std::io::copy(&mut stdin, &mut wtr));
-            (tmpfile, None)
-        }
-    };
-    let source: Box<dyn DataSource> = match ext {
-        #[cfg(feature = "parquet")]
-        Some("parquet") => Box::new(crate::parquet::ParquetFile::new(file)?),
-        Some("csv") => Box::new(crate::csv::CsvFile::new(file)?),
-        #[cfg(feature = "json")]
-        Some("json" | "jsonl" | "ndjson") => Box::new(crate::json::JsonFile::new(file)?),
-        None => Box::new(crate::csv::CsvFile::new(file)?),
-        _ => bail!("Unrecognised file extension"),
-    };
-    let source = CachedSource::new(source);
+    let source = CachedSource::new(get_source(&opts)?);
 
     let stdout = std::io::stdout();
     let mut stdout = BufWriter::new(stdout.lock());
@@ -98,6 +76,32 @@ fn main() -> anyhow::Result<()> {
         .flush()?;
     terminal::disable_raw_mode()?;
     result
+}
+
+fn get_source(opts: &Opts) -> anyhow::Result<Box<dyn DataSource>> {
+    let (file, ext) = match &opts.path {
+        Some(x) => (File::open(x)?, x.extension().and_then(|x| x.to_str())),
+        None => {
+            let mut stdin = std::io::stdin();
+            if stdin.is_tty() {
+                bail!("Need to specify a filename or feed data to stdin");
+            }
+            let tmpfile = tempfile::tempfile()?;
+            let mut wtr = LineWriter::new(tmpfile.try_clone()?);
+            std::thread::spawn(move || std::io::copy(&mut stdin, &mut wtr));
+            (tmpfile, None)
+        }
+    };
+
+    Ok(match ext {
+        #[cfg(feature = "parquet")]
+        Some("parquet") => Box::new(crate::parquet::ParquetFile::new(file)?),
+        Some("csv") => Box::new(crate::csv::CsvFile::new(file)?),
+        #[cfg(feature = "json")]
+        Some("json" | "jsonl" | "ndjson") => Box::new(crate::json::JsonFile::new(file)?),
+        None => Box::new(crate::csv::CsvFile::new(file)?),
+        _ => bail!("Unrecognised file extension"),
+    })
 }
 
 const CHUNK_SIZE: usize = 10_000;
