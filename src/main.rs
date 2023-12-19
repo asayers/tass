@@ -6,11 +6,15 @@ mod json;
 mod parquet;
 mod prompt;
 mod stats;
+#[cfg(feature = "virt")]
+mod virt;
 
 use crate::draw::*;
 use crate::prompt::*;
 use crate::stats::*;
 use anyhow::bail;
+#[cfg(feature = "virt")]
+use anyhow::ensure;
 use anyhow::Context;
 use arrow::datatypes::Schema;
 use arrow::record_batch::RecordBatch;
@@ -38,6 +42,9 @@ struct Opts {
     precision: usize,
     /// Whether to hide empty columns
     hide_empty: bool,
+    /// Make a virtual table (for testing)
+    #[cfg(feature = "virt")]
+    virtual: bool,
     /// The path to read.  If not specified, data will be read from stdin
     #[bpaf(positional)]
     path: Option<PathBuf>,
@@ -79,6 +86,17 @@ fn main() -> anyhow::Result<()> {
 }
 
 fn get_source(opts: &Opts) -> anyhow::Result<Box<dyn DataSource>> {
+    #[cfg(feature = "virt")]
+    if opts.virtual {
+        let Some(path) = &opts.path else {
+            bail!("Can't filter streaming data")
+        };
+        let ext = path.extension().and_then(|x| x.to_str());
+        ensure!(ext == Some("parquet"), "Can't filter this file type");
+        let source = crate::virt::VirtualFile::new(path)?;
+        return Ok(Box::new(source));
+    }
+
     let (file, ext) = match &opts.path {
         Some(x) => (File::open(x)?, x.extension().and_then(|x| x.to_str())),
         None => {

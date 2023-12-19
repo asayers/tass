@@ -15,15 +15,18 @@ bpaf = { version = "0.9.8", features = ["derive"] }
 chrono = "0.4.31"
 chrono-tz = "0.8.4"
 crossterm = "0.27.0"
+datafusion = { version = "34.0.0", optional = true }
 fileslice = { version = "0.4.0", default-features = false }
 hsl = "0.1.1"
 memchr = "2.6.4"
 parquet = { version = "49", optional = true }
 serde_json = { version = "1.0.107", optional = true }
 tempfile = "3.8.1"
+tokio = { version = "1.35.0", optional = true, features = ["rt"] }
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 
 [features]
 default = ["parquet"]
+virt = ["datafusion", "tokio"]
 json = ["serde_json"]
