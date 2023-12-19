@@ -2,7 +2,7 @@ use crate::DataSource;
 use anyhow::anyhow;
 use arrow::datatypes::Schema;
 use arrow::record_batch::RecordBatch;
-use datafusion::prelude::DataFrame;
+use datafusion::prelude::{DataFrame, Expr};
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
@@ -17,7 +17,7 @@ pub struct VirtualFile {
 }
 
 impl VirtualFile {
-    pub fn new(path: &Path) -> anyhow::Result<VirtualFile> {
+    pub fn new(path: &Path, sort: Option<&str>) -> anyhow::Result<VirtualFile> {
         use datafusion::prelude::{ParquetReadOptions, SessionContext};
 
         let rt = Runtime::new()?;
@@ -25,9 +25,14 @@ impl VirtualFile {
         let ctx = SessionContext::new();
         let opts = ParquetReadOptions::default();
         let path = path.to_str().unwrap();
-        let df = rt.block_on(ctx.read_parquet(path, opts))?;
+        let mut df = rt.block_on(ctx.read_parquet(path, opts))?;
 
         let schema = Arc::new(df.schema().into());
+
+        if let Some(sort) = sort {
+            let expr = parse_sort_expr(sort);
+            df = df.sort(vec![expr])?;
+        }
 
         // We don't support live-updating virtual tables, so we may as well cache
         // the row count
@@ -65,5 +70,14 @@ impl DataSource for VirtualFile {
 
     fn search(&self, _needle: &str, _from: usize, _rev: bool) -> anyhow::Result<Option<usize>> {
         Err(anyhow!("Searching virtual tables not supported yet"))
+    }
+}
+
+fn parse_sort_expr(txt: &str) -> Expr {
+    use datafusion::prelude::*;
+    if let Some(txt) = txt.strip_prefix('-') {
+        col(txt).sort(false, true)
+    } else {
+        col(txt).sort(true, true)
     }
 }
