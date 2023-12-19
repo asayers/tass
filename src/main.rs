@@ -45,6 +45,9 @@ struct Opts {
     /// A column to sort by. Prefix with '-' to invert
     #[cfg(feature = "virt")]
     sort: Option<String>,
+    /// A filter expression, eg. 'age > 30'
+    #[cfg(feature = "virt")]
+    filter: Option<String>,
     /// The path to read.  If not specified, data will be read from stdin
     #[bpaf(positional)]
     path: Option<PathBuf>,
@@ -87,13 +90,14 @@ fn main() -> anyhow::Result<()> {
 
 fn get_source(opts: &Opts) -> anyhow::Result<Box<dyn DataSource>> {
     #[cfg(feature = "virt")]
-    if opts.sort.is_some() {
+    if opts.sort.is_some() || opts.filter.is_some() {
         let Some(path) = &opts.path else {
             bail!("Can't filter streaming data")
         };
         let ext = path.extension().and_then(|x| x.to_str());
         ensure!(ext == Some("parquet"), "Can't filter this file type");
-        let source = crate::virt::VirtualFile::new(path, opts.sort.as_deref())?;
+        let source =
+            crate::virt::VirtualFile::new(path, opts.sort.as_deref(), opts.filter.as_deref())?;
         return Ok(Box::new(source));
     }
 

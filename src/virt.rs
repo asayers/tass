@@ -17,7 +17,11 @@ pub struct VirtualFile {
 }
 
 impl VirtualFile {
-    pub fn new(path: &Path, sort: Option<&str>) -> anyhow::Result<VirtualFile> {
+    pub fn new(
+        path: &Path,
+        sort: Option<&str>,
+        filter: Option<&str>,
+    ) -> anyhow::Result<VirtualFile> {
         use datafusion::prelude::{ParquetReadOptions, SessionContext};
 
         let rt = Runtime::new()?;
@@ -32,6 +36,10 @@ impl VirtualFile {
         if let Some(sort) = sort {
             let expr = parse_sort_expr(sort);
             df = df.sort(vec![expr])?;
+        }
+        if let Some(filter) = filter {
+            let expr = parse_filter_expr(filter, &schema)?;
+            df = df.filter(expr)?;
         }
 
         // We don't support live-updating virtual tables, so we may as well cache
@@ -80,4 +88,27 @@ fn parse_sort_expr(txt: &str) -> Expr {
     } else {
         col(txt).sort(true, true)
     }
+}
+
+fn parse_filter_expr(txt: &str, schema: &Schema) -> anyhow::Result<Expr> {
+    use datafusion::logical_expr::Operator;
+    use datafusion::prelude::*;
+    use datafusion::scalar::ScalarValue;
+
+    let mut tokens = txt.split_whitespace();
+    let mut next_token = || tokens.next().ok_or_else(|| anyhow!("Not enough tokens"));
+    let col_name = next_token()?;
+    let field = schema.field_with_name(col_name)?;
+    let op = match next_token()? {
+        "=" | "==" => Operator::Eq,
+        "!=" => Operator::NotEq,
+        "<" => Operator::Lt,
+        "<=" => Operator::LtEq,
+        ">" => Operator::Gt,
+        ">=" => Operator::GtEq,
+        op => return Err(anyhow!("{op}: Invalid operator")),
+    };
+    let val = next_token()?;
+    let val = ScalarValue::try_from_string(val.to_owned(), field.data_type())?;
+    Ok(binary_expr(col(col_name), op, lit(val)))
 }
