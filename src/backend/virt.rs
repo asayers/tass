@@ -1,4 +1,4 @@
-use crate::DataSource;
+use super::DataSource;
 use anyhow::anyhow;
 use arrow::datatypes::Schema;
 use arrow::record_batch::RecordBatch;

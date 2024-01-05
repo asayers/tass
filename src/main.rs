@@ -1,14 +1,9 @@
-mod csv;
+mod backend;
 mod draw;
-#[cfg(feature = "json")]
-mod json;
-#[cfg(feature = "parquet")]
-mod parquet;
 mod prompt;
 mod stats;
-#[cfg(feature = "virt")]
-mod virt;
 
+use crate::backend::DataSource;
 use crate::draw::*;
 use crate::prompt::*;
 use crate::stats::*;
@@ -96,8 +91,11 @@ fn get_source(opts: &Opts) -> anyhow::Result<Box<dyn DataSource>> {
         };
         let ext = path.extension().and_then(|x| x.to_str());
         ensure!(ext == Some("parquet"), "Can't filter this file type");
-        let source =
-            crate::virt::VirtualFile::new(path, opts.sort.as_deref(), opts.filter.as_deref())?;
+        let source = crate::backend::virt::VirtualFile::new(
+            path,
+            opts.sort.as_deref(),
+            opts.filter.as_deref(),
+        )?;
         return Ok(Box::new(source));
     }
 
@@ -117,11 +115,11 @@ fn get_source(opts: &Opts) -> anyhow::Result<Box<dyn DataSource>> {
 
     Ok(match ext {
         #[cfg(feature = "parquet")]
-        Some("parquet") => Box::new(crate::parquet::ParquetFile::new(file)?),
-        Some("csv") => Box::new(crate::csv::CsvFile::new(file)?),
+        Some("parquet") => Box::new(crate::backend::parquet::ParquetFile::new(file)?),
+        Some("csv") => Box::new(crate::backend::csv::CsvFile::new(file)?),
         #[cfg(feature = "json")]
-        Some("json" | "jsonl" | "ndjson") => Box::new(crate::json::JsonFile::new(file)?),
-        None => Box::new(crate::csv::CsvFile::new(file)?),
+        Some("json" | "jsonl" | "ndjson") => Box::new(crate::backend::json::JsonFile::new(file)?),
+        None => Box::new(crate::backend::csv::CsvFile::new(file)?),
         _ => bail!("Unrecognised file extension"),
     })
 }
@@ -136,13 +134,6 @@ struct CachedSource {
     available_cols: Vec<usize>,   // The columns in big_df
     available_rows: Range<usize>, // The rows in big_df
     col_stats: Vec<ColumnStats>,  // One per column in big_df
-}
-
-trait DataSource {
-    fn check_for_new_rows(&mut self) -> anyhow::Result<usize>;
-    fn row_count(&self) -> usize;
-    fn fetch_batch(&mut self, offset: usize, len: usize) -> anyhow::Result<RecordBatch>;
-    fn search(&self, needle: &str, from: usize, rev: bool) -> anyhow::Result<Option<usize>>;
 }
 
 impl CachedSource {

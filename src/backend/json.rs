@@ -1,47 +1,31 @@
-use crate::DataSource;
+use super::DataSource;
 use anyhow::bail;
-use arrow::csv::reader::Format;
-use arrow::csv::ReaderBuilder;
 use arrow::datatypes::{DataType, Field, Schema, SchemaBuilder};
+use arrow::json::reader::infer_json_schema;
+use arrow::json::ReaderBuilder;
 use arrow::record_batch::RecordBatch;
 use fileslice::FileSlice;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
-pub struct CsvFile {
+pub struct JsonFile {
     fs: FileSlice,
     /// The nth row begins at byte `row_offsets[n]` in `fs`
     row_offsets: Vec<u64>,
-    format: Format,
     schema: Arc<Schema>,
 }
 
-impl CsvFile {
-    pub fn new(file: File) -> anyhow::Result<CsvFile> {
-        Ok(CsvFile {
+impl JsonFile {
+    pub fn new(file: File) -> anyhow::Result<JsonFile> {
+        warn!("JSON support is experimental");
+        Ok(JsonFile {
             fs: FileSlice::new(file.try_clone()?).slice(0..0),
-            format: Format::default().with_header(false),
             row_offsets: vec![],
             schema: Schema::empty().into(),
         })
-    }
-
-    /// Initial schema inference just reads the header row to get the
-    /// names of the fields.  The inferred datatype of all columns will
-    /// just be "null" at this point
-    fn read_header(&mut self) -> anyhow::Result<()> {
-        let format = self.format.clone().with_header(true);
-        let (schema, n_rows) = format.infer_schema(self.fs.clone(), Some(0))?;
-        assert_eq!(n_rows, 0);
-        self.schema = schema.into();
-        for f in self.schema.fields() {
-            assert_eq!(f.data_type(), &DataType::Null);
-            info!("Read header {}", f.name());
-        }
-        Ok(())
     }
 
     // TODO: Optimize (memchr + mmap?)
@@ -63,7 +47,11 @@ impl CsvFile {
     /// Merge `schema` into `self.schema`
     fn merge_schema(&mut self, schema: Schema) {
         let mut bldr = SchemaBuilder::new();
-        for (old, new) in self.schema.fields().iter().zip(schema.fields()) {
+        for old in self.schema.fields() {
+            let Some((_, new)) = schema.fields().find(old.name()) else {
+                bldr.push(old.clone());
+                continue;
+            };
             let name = old.name();
             let nullable = old.is_nullable()
                 || new.is_nullable()
@@ -87,12 +75,24 @@ impl CsvFile {
             }
             bldr.push(merged);
         }
+        for new in schema.fields() {
+            if self.schema.fields().find(new.name()).is_none() {
+                let new = match new.data_type() {
+                    DataType::Timestamp(_, _) => {
+                        Field::clone(new).with_data_type(DataType::Utf8).into()
+                    }
+                    _ => new.clone(),
+                };
+                info!("New field {}: {}", new.name(), new.data_type());
+                bldr.push(new);
+            }
+        }
         self.schema = bldr.finish().into();
         debug!("Merged new schema into the existing one");
     }
 }
 
-impl DataSource for CsvFile {
+impl DataSource for JsonFile {
     fn check_for_new_rows(&mut self) -> anyhow::Result<usize> {
         let n_bytes_then = self.fs.end_pos();
         self.fs.expand();
@@ -101,13 +101,6 @@ impl DataSource for CsvFile {
             return Ok(0);
         }
         debug!("File size has changed! ({n_bytes_then} -> {n_bytes_now})");
-
-        if self.schema.fields().is_empty() {
-            match self.read_header() {
-                Ok(()) => (),
-                Err(_) => return Ok(0),
-            }
-        }
 
         let n = self.add_new_lines()?;
         debug!("Added {n} new rows");
@@ -138,14 +131,12 @@ impl DataSource for CsvFile {
         let slice = self.fs.slice(byte_start..byte_end);
         debug!(byte_start, byte_end, "Sliced the file");
 
-        let (schema, _n_rows) = self.format.infer_schema(slice.clone(), None)?;
+        let (schema, _n_rows) = infer_json_schema(BufReader::new(slice.clone()), None)?;
         self.merge_schema(schema);
 
         let mut rdr = ReaderBuilder::new(self.schema.clone())
-            .with_format(self.format.clone())
-            .with_bounds(0, len)
             .with_batch_size(len)
-            .build(slice)?;
+            .build(BufReader::new(slice))?;
         let batch = match rdr.next() {
             Some(batch) => batch?,
             None => RecordBatch::new_empty(self.schema.clone()),
@@ -157,7 +148,7 @@ impl DataSource for CsvFile {
 
     fn search(&self, needle: &str, from: usize, rev: bool) -> anyhow::Result<Option<usize>> {
         if rev {
-            bail!("Reverse-searching CSV not supported yet");
+            bail!("Reverse-searching JSON not supported yet");
         }
         // FIXME: Not all newlines are new rows in CSV
         for (row, txt) in BufReader::new(self.fs.clone())
