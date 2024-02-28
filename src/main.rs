@@ -37,6 +37,9 @@ struct Opts {
     precision: usize,
     /// Whether to hide empty columns
     hide_empty: bool,
+    /// The format of the data.  Inferred from the file extension if unspecified
+    #[bpaf(long("format"), short('f'))]
+    format: Option<String>,
     /// A column to sort by. Prefix with '-' to invert
     #[cfg(feature = "virt")]
     sort: Option<String>,
@@ -113,7 +116,7 @@ fn get_source(opts: &Opts) -> anyhow::Result<Box<dyn DataSource>> {
         }
     };
 
-    Ok(match ext {
+    Ok(match opts.format.as_deref().or(ext) {
         #[cfg(feature = "parquet")]
         Some("parquet") => Box::new(crate::backend::parquet::ParquetFile::new(file)?),
         Some("csv") => Box::new(crate::backend::csv::CsvFile::new(file, b',')?),
