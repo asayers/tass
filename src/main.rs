@@ -116,10 +116,11 @@ fn get_source(opts: &Opts) -> anyhow::Result<Box<dyn DataSource>> {
     Ok(match ext {
         #[cfg(feature = "parquet")]
         Some("parquet") => Box::new(crate::backend::parquet::ParquetFile::new(file)?),
-        Some("csv") => Box::new(crate::backend::csv::CsvFile::new(file)?),
+        Some("csv") => Box::new(crate::backend::csv::CsvFile::new(file, b',')?),
+        Some("tsv") => Box::new(crate::backend::csv::CsvFile::new(file, b'\t')?),
         #[cfg(feature = "json")]
         Some("json" | "jsonl" | "ndjson") => Box::new(crate::backend::json::JsonFile::new(file)?),
-        None => Box::new(crate::backend::csv::CsvFile::new(file)?),
+        None => Box::new(crate::backend::csv::CsvFile::new(file, b',')?),
         _ => bail!("Unrecognised file extension"),
     })
 }

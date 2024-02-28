@@ -20,10 +20,12 @@ pub struct CsvFile {
 }
 
 impl CsvFile {
-    pub fn new(file: File) -> anyhow::Result<CsvFile> {
+    pub fn new(file: File, delimiter: u8) -> anyhow::Result<CsvFile> {
         Ok(CsvFile {
             fs: FileSlice::new(file.try_clone()?).slice(0..0),
-            format: Format::default().with_header(false),
+            format: Format::default()
+                .with_header(false)
+                .with_delimiter(delimiter),
             row_offsets: vec![],
             schema: Schema::empty().into(),
         })
