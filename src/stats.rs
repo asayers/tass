@@ -66,15 +66,15 @@ impl ColumnStats {
             DataType::Float16 => ColumnStats::new_floating::<Float16Type>(col!(), settings)?,
             DataType::Float32 => ColumnStats::new_floating::<Float32Type>(col!(), settings)?,
             DataType::Float64 => ColumnStats::new_floating::<Float64Type>(col!(), settings)?,
-            DataType::Decimal128(_, _) => ColumnStats::fixed_len(15), // TODO
-            DataType::Decimal256(_, _) => ColumnStats::fixed_len(15), // TODO
+            DataType::Decimal128(_, _) => ColumnStats::fallback(col)?, // TODO
+            DataType::Decimal256(_, _) => ColumnStats::fallback(col)?, // TODO
 
             DataType::Utf8 => ColumnStats::new_string::<i32>(col!())?,
             DataType::LargeUtf8 => ColumnStats::new_string::<i64>(col!())?,
             DataType::Binary => ColumnStats::new_binary::<i32>(col!())?,
             DataType::LargeBinary => ColumnStats::new_binary::<i64>(col!())?,
-            DataType::FixedSizeBinary(_) => ColumnStats::fixed_len(15), // TODO
-            DataType::Dictionary(_, _) => ColumnStats::fixed_len(15),   // TODO
+            DataType::FixedSizeBinary(_) => ColumnStats::fallback(col)?, // TODO
+            DataType::Dictionary(_, _) => ColumnStats::fallback(col)?,   // TODO
 
             DataType::Date32 | DataType::Date64 => ColumnStats::fixed_len(10), // YYYY-MM-DD
             DataType::Time32(unit) | DataType::Time64(unit) => ColumnStats::fixed_len(match unit {
@@ -94,20 +94,18 @@ impl ColumnStats {
                     .map(|tz| tz.to_string().len() as u16)
                     .unwrap_or(0),
             ),
-            DataType::Duration(_) => ColumnStats::fixed_len(15), // TODO
-            DataType::Interval(_) => ColumnStats::fixed_len(15), // TODO
+            DataType::Duration(_) => ColumnStats::fallback(col)?, // TODO
+            DataType::Interval(_) => ColumnStats::fallback(col)?, // TODO
 
-            // TODO:
-            DataType::Struct(_) => ColumnStats::fixed_len(15),
-            DataType::Map(_, _) => ColumnStats::fixed_len(15),
+            DataType::Struct(_) => ColumnStats::fallback(col)?,
+            DataType::Map(_, _) => ColumnStats::fallback(col)?,
 
-            // TODO:
-            DataType::List(_) => ColumnStats::fixed_len(15),
-            DataType::FixedSizeList(_, _) => ColumnStats::fixed_len(15),
-            DataType::LargeList(_) => ColumnStats::fixed_len(15),
+            DataType::List(_) => ColumnStats::fallback(col)?,
+            DataType::LargeList(_) => ColumnStats::fallback(col)?,
+            DataType::FixedSizeList(_, _) => ColumnStats::fallback(col)?,
 
-            DataType::Union(_, _) => ColumnStats::fixed_len(15),
-            DataType::RunEndEncoded(_, _) => ColumnStats::fixed_len(15),
+            DataType::Union(_, _) => ColumnStats::fallback(col)?,
+            DataType::RunEndEncoded(_, _) => ColumnStats::fallback(col)?,
         };
         stats.ideal_width = stats.ideal_width.max(name.len() as u16).max(3);
         Ok(stats)
@@ -225,4 +223,40 @@ impl ColumnStats {
             cardinality: None,
         }
     }
+
+    fn fallback(col: &dyn Array) -> anyhow::Result<ColumnStats> {
+        Ok(ColumnStats {
+            ideal_width: column_width(col)? as u16,
+            min_max: None,
+            cardinality: None,
+        })
+    }
+}
+
+fn column_width(col: &dyn Array) -> anyhow::Result<usize> {
+    use arrow::util::display::*;
+    let options = FormatOptions::default();
+    let formatter = ArrayFormatter::try_new(col, &options)?;
+    let mut max_len = 0;
+    for row in 0..col.len() {
+        let len = fmt_len(formatter.value(row))?;
+        max_len = max_len.max(len);
+    }
+    Ok(max_len)
+}
+
+fn fmt_len(x: impl std::fmt::Display) -> anyhow::Result<usize> {
+    use std::fmt::Write;
+    struct CountChars(usize);
+    impl Write for CountChars {
+        #[inline]
+        fn write_str(&mut self, s: &str) -> std::fmt::Result {
+            self.0 += s.len();
+            Ok(())
+        }
+    }
+
+    let mut counter = CountChars(0);
+    write!(counter, "{}", x)?;
+    Ok(counter.0)
 }
