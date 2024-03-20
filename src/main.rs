@@ -256,7 +256,8 @@ fn runloop(
             if prompt.is_following() {
                 start_row = total_rows.saturating_sub(term_size.1 as usize - 2);
             }
-            let end_row = (start_row + term_size.1 as usize - 2).min(total_rows);
+            let end_row = (start_row + (term_size.1 - HEADER_HEIGHT - FOOTER_HEIGHT) as usize)
+                .min(total_rows);
             let rows = start_row..end_row;
             source.ensure_available(rows.clone(), &settings)?;
 

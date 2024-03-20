@@ -15,6 +15,9 @@ use crossterm::*;
 use std::{cmp::Ordering, collections::HashSet, fmt::Display, io::Write};
 use tracing::debug;
 
+pub const HEADER_HEIGHT: u16 = 1;
+pub const FOOTER_HEIGHT: u16 = 1;
+
 pub struct RenderSettings {
     pub float_dps: usize,
     pub hide_empty: bool,
@@ -47,7 +50,7 @@ pub fn draw(
     stdout
         .queue(style::SetAttribute(style::Attribute::Underlined))?
         .queue(style::SetAttribute(style::Attribute::Dim))?
-        .queue(cursor::MoveTo(0, 0))?
+        .queue(cursor::MoveTo(0, HEADER_HEIGHT - 1))?
         .queue(style::Print(" ".repeat(idx_width as usize)))?
         .queue(style::SetAttribute(style::Attribute::Reset))?;
 
@@ -72,7 +75,7 @@ pub fn draw(
 
     // Draw tildes for empty rows
     stdout.queue(style::SetForegroundColor(style::Color::Blue))?;
-    for _ in (df.num_rows() as u16)..(term_height - 2) {
+    for _ in (df.num_rows() as u16)..(term_height - HEADER_HEIGHT - FOOTER_HEIGHT) {
         stdout.queue(cursor::MoveToNextLine(1))?;
         write!(stdout, "~")?;
     }
@@ -80,7 +83,7 @@ pub fn draw(
 
     // Draw the header
     stdout
-        .queue(cursor::MoveTo(idx_width, 0))?
+        .queue(cursor::MoveTo(idx_width, HEADER_HEIGHT - 1))?
         .queue(style::SetAttribute(style::Attribute::Underlined))?
         .queue(style::SetAttribute(style::Attribute::Bold))?;
     for (field, width) in df.schema().fields.iter().zip(col_widths) {
@@ -94,7 +97,10 @@ pub fn draw(
     for width in col_widths {
         for row in 0..df.num_rows() {
             stdout
-                .queue(cursor::MoveTo(x_baseline, u16::try_from(row + 1).unwrap()))?
+                .queue(cursor::MoveTo(
+                    x_baseline,
+                    u16::try_from(row).unwrap() + HEADER_HEIGHT,
+                ))?
                 .queue(style::Print("│"))?;
         }
         x_baseline += width + 3;
@@ -268,7 +274,7 @@ fn fallback(
         let txt = formatter.value(row).to_string();
         stdout.queue(cursor::MoveTo(
             x_baseline + 2,
-            u16::try_from(row + 1).unwrap(),
+            u16::try_from(row).unwrap() + HEADER_HEIGHT,
         ))?;
         print_text(stdout, &txt, width)?;
     }
@@ -291,7 +297,7 @@ fn draw_utf8_col<T: OffsetSizeTrait>(
         let Some(val) = val else { continue };
         stdout.queue(cursor::MoveTo(
             x_baseline + 2,
-            u16::try_from(row + 1).unwrap(),
+            u16::try_from(row).unwrap() + HEADER_HEIGHT,
         ))?;
         if is_categorical {
             let mut hash = 7;
@@ -325,7 +331,7 @@ fn draw_binary_col<T: OffsetSizeTrait>(
         let txt = val.escape_ascii().to_string();
         stdout.queue(cursor::MoveTo(
             x_baseline + 2,
-            u16::try_from(row + 1).unwrap(),
+            u16::try_from(row).unwrap() + HEADER_HEIGHT,
         ))?;
         print_text(stdout, &txt, width)?;
     }
@@ -350,7 +356,7 @@ where
         let Some(val) = val else { continue };
         stdout.queue(cursor::MoveTo(
             x_baseline + 2,
-            u16::try_from(row + 1).unwrap(),
+            u16::try_from(row).unwrap() + HEADER_HEIGHT,
         ))?;
         {
             buf.clear();
@@ -404,7 +410,7 @@ where
         let Some(val) = val else { continue };
         stdout.queue(cursor::MoveTo(
             x_baseline + 2,
-            u16::try_from(row + 1).unwrap(),
+            u16::try_from(row).unwrap() + HEADER_HEIGHT,
         ))?;
         buf.clear();
         use std::fmt::Write;
@@ -432,7 +438,7 @@ fn draw_bool_col(
         let Some(val) = val else { continue };
         stdout.queue(cursor::MoveTo(
             x_baseline + 2,
-            u16::try_from(row + 1).unwrap(),
+            u16::try_from(row).unwrap() + HEADER_HEIGHT,
         ))?;
         buf.clear();
         use std::fmt::Write;
@@ -459,7 +465,7 @@ where
         let Some(val) = val else { continue };
         stdout.queue(cursor::MoveTo(
             x_baseline + 2,
-            u16::try_from(row + 1).unwrap(),
+            u16::try_from(row).unwrap() + HEADER_HEIGHT,
         ))?;
         buf.clear();
         use std::fmt::Write;
@@ -492,7 +498,7 @@ where
         let Some(val) = val else { continue };
         stdout.queue(cursor::MoveTo(
             x_baseline + 2,
-            u16::try_from(row + 1).unwrap(),
+            u16::try_from(row).unwrap() + HEADER_HEIGHT,
         ))?;
         buf.clear();
         use std::fmt::Write;
@@ -518,7 +524,7 @@ where
         let Some(val) = val else { continue };
         stdout.queue(cursor::MoveTo(
             x_baseline + 2,
-            u16::try_from(row + 1).unwrap(),
+            u16::try_from(row).unwrap() + HEADER_HEIGHT,
         ))?;
         buf.clear();
         use std::fmt::Write;
