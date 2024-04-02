@@ -44,7 +44,9 @@ pub fn draw(
         "Repainting!",
     );
 
-    stdout.queue(terminal::Clear(terminal::ClearType::All))?;
+    stdout
+        .queue(terminal::BeginSynchronizedUpdate)?
+        .queue(terminal::Clear(terminal::ClearType::All))?;
 
     // Draw the box in the top-left
     stdout
@@ -132,6 +134,7 @@ pub fn draw(
         .queue(cursor::MoveTo(0, term_height))?;
     prompt.draw(stdout)?;
 
+    stdout.queue(terminal::EndSynchronizedUpdate)?;
     stdout.flush()?;
     Ok(())
 }
