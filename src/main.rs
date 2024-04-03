@@ -288,6 +288,7 @@ fn runloop(
                 &settings,
                 &prompt,
                 &highlights,
+                search_matches.len(),
             )?;
             dirty = false;
         }

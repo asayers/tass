@@ -37,6 +37,7 @@ pub fn draw(
     settings: &RenderSettings,
     prompt: &Prompt,
     highlights: &HashSet<usize>,
+    n_search_matches: usize,
 ) -> anyhow::Result<()> {
     debug!(
         n_rows = df.num_rows(),
@@ -117,19 +118,25 @@ pub fn draw(
     }
 
     // Draw the prompt
+    let search_txt = if n_search_matches != 0 {
+        format!("({} matches)", n_search_matches)
+    } else {
+        String::new()
+    };
     let location_txt = format!(
         "{}-{} of {}",
         start_row + 1,
         start_row + df.num_rows(),
         total_rows,
     );
+    let rprompt = format!("{search_txt} {location_txt}");
     stdout
         .queue(cursor::MoveTo(
-            term_width - location_txt.len() as u16,
+            term_width - rprompt.len() as u16,
             term_height,
         ))?
         .queue(style::SetAttribute(style::Attribute::Dim))?
-        .queue(style::Print(location_txt))?
+        .queue(style::Print(rprompt))?
         .queue(style::SetAttribute(style::Attribute::Reset))?
         .queue(cursor::MoveTo(0, term_height))?;
     prompt.draw(stdout)?;
