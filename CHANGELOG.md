@@ -1,3 +1,11 @@
+## 0.9.0
+
+* Add support for TSV files
+* Add a `--format` flag for forcing a certain input format
+* Correctly size columns which use the fallback renderer
+* Reduce flashing/tearing when redrawing large terminals
+* Add _experimental_ support for sorting/filtering (behind a feature flag)
+
 ## 0.8.0
 
 * Add fallback rendering for all column types

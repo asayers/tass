@@ -1,7 +1,7 @@
 [package]
 name = "tass"
 description = "A pager for tabular data"
-version = "0.8.0"
+version = "0.9.0"
 authors = ["Alex Sayers <alex@asayers.com>"]
 edition = "2021"
 license = "Unlicense"
