@@ -11,8 +11,22 @@ pub struct Prompt {
 enum Mode {
     #[default]
     Normal,
-    Search,
+    Search(Dir),
     Follow,
+}
+
+#[derive(Copy, Clone)]
+pub enum Dir {
+    Forward,
+    Reverse,
+}
+impl Dir {
+    pub fn invert(self) -> Dir {
+        match self {
+            Dir::Forward => Dir::Reverse,
+            Dir::Reverse => Dir::Forward,
+        }
+    }
 }
 
 pub enum Cmd {
@@ -26,7 +40,7 @@ pub enum Cmd {
     ColRight,
     ColLeft,
     Exit,
-    Search(String),
+    Search(String, Dir),
     SearchNext,
     SearchPrev,
     ToggleHighlight(u16),
@@ -36,7 +50,8 @@ impl Prompt {
     pub fn draw(&self, stdout: &mut impl Write) -> anyhow::Result<()> {
         let ps1 = match self.mode {
             Mode::Normal => ":",
-            Mode::Search => "/",
+            Mode::Search(Dir::Forward) => "/",
+            Mode::Search(Dir::Reverse) => "?",
             Mode::Follow => ">",
         };
         write!(stdout, "{}{}", ps1, self.input)?;
@@ -65,11 +80,16 @@ impl Prompt {
                 KeyCode::Esc | KeyCode::Char('q') => Some(Cmd::Exit),
                 KeyCode::Char('/') => {
                     self.input.clear();
-                    self.mode = Mode::Search;
+                    self.mode = Mode::Search(Dir::Forward);
+                    None
+                }
+                KeyCode::Char('?') => {
+                    self.input.clear();
+                    self.mode = Mode::Search(Dir::Reverse);
                     None
                 }
                 KeyCode::Char('n') => Some(Cmd::SearchNext),
-                KeyCode::Char('p') => Some(Cmd::SearchPrev),
+                KeyCode::Char('N') => Some(Cmd::SearchPrev),
                 KeyCode::Char('g') => {
                     if let Ok(x) = self.input.parse::<usize>() {
                         self.input.clear();
@@ -88,7 +108,7 @@ impl Prompt {
                 }
                 _ => None,
             },
-            Mode::Search => match key {
+            Mode::Search(dir) => match key {
                 KeyCode::Char(c) => {
                     self.input.push(c);
                     None
@@ -103,7 +123,7 @@ impl Prompt {
                 KeyCode::Enter => {
                     let needle = std::mem::take(&mut self.input);
                     self.mode = Mode::Normal;
-                    Some(Cmd::Search(needle))
+                    Some(Cmd::Search(needle, dir))
                 }
                 KeyCode::Esc => {
                     self.input.clear();

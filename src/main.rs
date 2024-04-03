@@ -230,6 +230,7 @@ fn runloop(
     let mut col_widths = vec![];
     let mut highlights = HashSet::<usize>::default();
     let mut search_matches = vec![];
+    let mut search_dir = Dir::Forward;
 
     // Load the initial batch
     source.ensure_available(0..0, &settings)?;
@@ -327,22 +328,22 @@ fn runloop(
                             (start_row + term_size.1 as usize - 2).min(total_rows.saturating_sub(1))
                     }
                     Cmd::RowGoTo(x) => start_row = x.min(total_rows.saturating_sub(1)),
-                    Cmd::Search(needle) => {
+                    Cmd::Search(needle, dir) => {
                         search_matches = source.inner.search(&needle)?;
-                        if let Some(x) = search_matches.iter().find(|x| **x > start_row) {
-                            start_row = *x;
+                        search_dir = dir;
+                        if let Some(x) = next_match(&search_matches, start_row, search_dir) {
+                            start_row = x;
                         }
                     }
                     Cmd::SearchNext => {
-                        // TODO: Binary search
-                        if let Some(x) = search_matches.iter().find(|x| **x > start_row) {
-                            start_row = *x;
+                        if let Some(x) = next_match(&search_matches, start_row, search_dir) {
+                            start_row = x;
                         }
                     }
                     Cmd::SearchPrev => {
-                        // TODO: Binary search
-                        if let Some(x) = search_matches.iter().rfind(|x| **x < start_row) {
-                            start_row = *x;
+                        if let Some(x) = next_match(&search_matches, start_row, search_dir.invert())
+                        {
+                            start_row = x;
                         }
                     }
                     Cmd::ToggleHighlight(row) => {
@@ -358,6 +359,14 @@ fn runloop(
             }
             dirty = true;
         }
+    }
+}
+
+fn next_match(matches: &[usize], current_row: usize, dir: Dir) -> Option<usize> {
+    // TODO: Binary search
+    match dir {
+        Dir::Forward => matches.iter().copied().find(|x| *x > current_row),
+        Dir::Reverse => matches.iter().copied().rfind(|x| *x < current_row),
     }
 }
 
