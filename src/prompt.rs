@@ -5,7 +5,6 @@ use std::io::Write;
 pub struct Prompt {
     mode: Mode,
     input: String,
-    search: String,
 }
 
 #[derive(Default)]
@@ -27,8 +26,9 @@ pub enum Cmd {
     ColRight,
     ColLeft,
     Exit,
-    SearchNext(String),
-    SearchPrev(String),
+    Search(String),
+    SearchNext,
+    SearchPrev,
     ToggleHighlight(u16),
 }
 
@@ -68,8 +68,8 @@ impl Prompt {
                     self.mode = Mode::Search;
                     None
                 }
-                KeyCode::Char('n') => Some(Cmd::SearchNext(self.search.clone())),
-                KeyCode::Char('p') => Some(Cmd::SearchPrev(self.search.clone())),
+                KeyCode::Char('n') => Some(Cmd::SearchNext),
+                KeyCode::Char('p') => Some(Cmd::SearchPrev),
                 KeyCode::Char('g') => {
                     if let Ok(x) = self.input.parse::<usize>() {
                         self.input.clear();
@@ -101,10 +101,9 @@ impl Prompt {
                     None
                 }
                 KeyCode::Enter => {
-                    std::mem::swap(&mut self.search, &mut self.input);
-                    self.input.clear();
+                    let needle = std::mem::take(&mut self.input);
                     self.mode = Mode::Normal;
-                    Some(Cmd::SearchNext(self.search.clone()))
+                    Some(Cmd::Search(needle))
                 }
                 KeyCode::Esc => {
                     self.input.clear();

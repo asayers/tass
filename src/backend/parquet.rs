@@ -53,7 +53,7 @@ impl DataSource for ParquetFile {
         Ok(batch)
     }
 
-    fn search(&self, _needle: &str, _from: usize, _rev: bool) -> anyhow::Result<Option<usize>> {
+    fn search(&self, _needle: &str) -> anyhow::Result<Vec<usize>> {
         Err(anyhow!("Searching parquet not supported yet"))
     }
 }

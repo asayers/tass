@@ -229,6 +229,7 @@ fn runloop(
     let mut dirty = true;
     let mut col_widths = vec![];
     let mut highlights = HashSet::<usize>::default();
+    let mut search_matches = vec![];
 
     // Load the initial batch
     source.ensure_available(0..0, &settings)?;
@@ -325,14 +326,22 @@ fn runloop(
                             (start_row + term_size.1 as usize - 2).min(total_rows.saturating_sub(1))
                     }
                     Cmd::RowGoTo(x) => start_row = x.min(total_rows.saturating_sub(1)),
-                    Cmd::SearchNext(needle) => {
-                        if let Some(x) = source.inner.search(&needle, start_row, false)? {
-                            start_row = x;
+                    Cmd::Search(needle) => {
+                        search_matches = source.inner.search(&needle)?;
+                        if let Some(x) = search_matches.iter().find(|x| **x > start_row) {
+                            start_row = *x;
                         }
                     }
-                    Cmd::SearchPrev(needle) => {
-                        if let Some(x) = source.inner.search(&needle, start_row, true)? {
-                            start_row = x;
+                    Cmd::SearchNext => {
+                        // TODO: Binary search
+                        if let Some(x) = search_matches.iter().find(|x| **x > start_row) {
+                            start_row = *x;
+                        }
+                    }
+                    Cmd::SearchPrev => {
+                        // TODO: Binary search
+                        if let Some(x) = search_matches.iter().rfind(|x| **x < start_row) {
+                            start_row = *x;
                         }
                     }
                     Cmd::ToggleHighlight(row) => {

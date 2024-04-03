@@ -1,5 +1,4 @@
 use super::DataSource;
-use anyhow::bail;
 use arrow::csv::reader::Format;
 use arrow::csv::ReaderBuilder;
 use arrow::datatypes::{DataType, Field, Schema, SchemaBuilder};
@@ -47,6 +46,7 @@ impl CsvFile {
     }
 
     // TODO: Optimize (memchr + mmap?)
+    // FIXME: Not all newlines are new rows in CSV
     fn add_new_lines(&mut self) -> anyhow::Result<usize> {
         let n_rows_then = self.row_count();
         let mut line_start = self.row_offsets.last().copied().unwrap_or(0);
@@ -157,21 +157,15 @@ impl DataSource for CsvFile {
         Ok(batch)
     }
 
-    fn search(&self, needle: &str, from: usize, rev: bool) -> anyhow::Result<Option<usize>> {
-        if rev {
-            bail!("Reverse-searching CSV not supported yet");
-        }
-        // FIXME: Not all newlines are new rows in CSV
-        for (row, txt) in BufReader::new(self.fs.clone())
-            .lines()
-            .enumerate()
-            .skip(from + 1 /* header */ + 1 /* current_row */)
-        {
+    // FIXME: Not all newlines are new rows in CSV
+    fn search(&self, needle: &str) -> anyhow::Result<Vec<usize>> {
+        let mut matches = vec![];
+        for (row, txt) in BufReader::new(self.fs.clone()).lines().skip(1).enumerate() {
             let txt = txt?;
-            if memchr::memmem::find(txt.as_bytes(), needle.as_bytes()).is_some() {
-                return Ok(Some(row - 1));
+            if txt.contains(needle) {
+                matches.push(row);
             }
         }
-        Ok(None)
+        Ok(matches)
     }
 }

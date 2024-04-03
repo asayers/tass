@@ -12,5 +12,6 @@ pub trait DataSource {
     fn check_for_new_rows(&mut self) -> anyhow::Result<usize>;
     fn row_count(&self) -> usize;
     fn fetch_batch(&mut self, offset: usize, len: usize) -> anyhow::Result<RecordBatch>;
-    fn search(&self, needle: &str, from: usize, rev: bool) -> anyhow::Result<Option<usize>>;
+    /// Returns a list of rows containing the needle.  Should be sorted and de-duped.
+    fn search(&self, needle: &str) -> anyhow::Result<Vec<usize>>;
 }

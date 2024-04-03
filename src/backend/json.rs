@@ -146,21 +146,14 @@ impl DataSource for JsonFile {
         Ok(batch)
     }
 
-    fn search(&self, needle: &str, from: usize, rev: bool) -> anyhow::Result<Option<usize>> {
-        if rev {
-            bail!("Reverse-searching JSON not supported yet");
-        }
-        // FIXME: Not all newlines are new rows in CSV
-        for (row, txt) in BufReader::new(self.fs.clone())
-            .lines()
-            .enumerate()
-            .skip(from + 1 /* header */ + 1 /* current_row */)
-        {
+    fn search(&self, needle: &str) -> anyhow::Result<Vec<usize>> {
+        let mut matches = vec![];
+        for (row, txt) in BufReader::new(self.fs.clone()).lines().enumerate() {
             let txt = txt?;
-            if memchr::memmem::find(txt.as_bytes(), needle.as_bytes()).is_some() {
-                return Ok(Some(row - 1));
+            if txt.contains(needle) {
+                matches.push(row);
             }
         }
-        Ok(None)
+        Ok(matches)
     }
 }

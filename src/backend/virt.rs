@@ -76,7 +76,7 @@ impl DataSource for VirtualFile {
         }
     }
 
-    fn search(&self, _needle: &str, _from: usize, _rev: bool) -> anyhow::Result<Option<usize>> {
+    fn search(&self, _needle: &str) -> anyhow::Result<Vec<usize>> {
         Err(anyhow!("Searching virtual tables not supported yet"))
     }
 }
