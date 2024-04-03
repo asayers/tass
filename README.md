@@ -1,7 +1,8 @@
 <h1 align="center">Tass</h1>
 <p align="center">A pager for tabular data</p>
 
-It's like `less`, but for CSV and parquet files!  It looks like this:
+`tass` - it's like `less`, but for tables!  It can read CSV/TSV and parquet
+files.  It looks like this:
 
 <img src="https://github.com/asayers/tass/raw/master/demo.png">
 
@@ -48,19 +49,20 @@ number <kbd>g</kbd>                               | Move to line `$number`
 
 ## Comparison to other tools
 
-Tool                             | Functionality                      | Filetypes               | Loads whole file into memory | Streaming 
----------------------------------|------------------------------------|-------------------------|------------------------------|-----------
-tass                             | ⭐ Viewing data, basic searching   | CSV, parquet            | no 😌                        | ✔️ 
-[csvlens]                        | ⭐ Similar to tass                 | CSV, TSV                | no 😌                        | ✔️ 
-[VisiData]                       | ⭐⭐ Summary stats, plots, etc.    | CSV, parquet, JSON, ... | yes 😱                       | ✔️ 
-Excel/Calc/Numbers/Google Sheets | ⭐⭐⭐ It's a spreadsheet!         | CSV, xls, ods, ...      | yes 😱                       |
-
-My advice is to use the most full-featured tool you can get away with.
-However, if you _are_ cursed with multi-gigabyte CSV files, then your options
-are limited.
+Tool                             | Functionality                      | Filetypes                   | Loads whole file into memory | Streaming 
+---------------------------------|------------------------------------|-----------------------------|------------------------------|-----------
+tass                             | ⭐ Viewing data, basic searching   | CSV/TSV, parquet            | no 😌                        | ✔️ 
+[csvlens]                        | ⭐ Similar to tass                 | CSV/TSV                     | no 😌                        | ✔️ 
+[VisiData]                       | ⭐⭐ Summary stats, plots, etc.    | CSV/TSV, parquet, JSON, ... | yes 😱                       | ✔️ 
+Excel/Calc/Numbers/Google Sheets | ⭐⭐⭐ It's a spreadsheet!         | CSV/TSV, xls, ods, ...      | yes 😱                       |
+Pandas/Polars/DataFrame.jl       | ⭐⭐⭐ It's a dataframe library!   | CSV/TSV, parquet, ...       | no 😌                        |
 
 [VisiData]: https://www.visidata.org/
 [csvlens]: https://github.com/YS-L/csvlens
+
+For manipulating data, my advice is to use a spreadsheet (for small datasets)
+or dataframe library (for larger datasets).  Sometimes you just want to quickly
+inspect the contents of a file though, and that's what tass is for.
 
 ## Tips & tricks
 
@@ -70,8 +72,9 @@ Here are some more tips for working with large CSV files:
   data itself, you can still use VisiData/Excel/etc.: just downsample it first.
   This will reduce the precision of your stats and plots, but not the overall
   shape (probably).  [xsv] has a subcommand that can do this for you.
-* If you want exact answers to complex questions, consider dumping your CSV
-  into a sqlite database and working with that instead.
+* If you want exact answers to complex questions, use a dataframe library.
+  Alternatively, consider dumping your CSV into a sqlite database and working
+  with that instead.
 * For ad-hoc computations on CSV files, take a look at [frawk] - it's
   really nice.
 
