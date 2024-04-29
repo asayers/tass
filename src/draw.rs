@@ -255,14 +255,19 @@ fn draw_col(
             col!(),
             stats.cardinality.is_some(),
         ),
+        DataType::Utf8View => fallback(stdout, x_baseline, width, col),
 
         DataType::Binary => draw_binary_col::<i32>(stdout, x_baseline, width, col!()),
         DataType::LargeBinary => draw_binary_col::<i64>(stdout, x_baseline, width, col!()),
         DataType::FixedSizeBinary(_) => fallback(stdout, x_baseline, width, col),
+        DataType::BinaryView => fallback(stdout, x_baseline, width, col),
 
         DataType::List(_) => fallback(stdout, x_baseline, width, col),
         DataType::FixedSizeList(_, _) => fallback(stdout, x_baseline, width, col),
         DataType::LargeList(_) => fallback(stdout, x_baseline, width, col),
+        DataType::ListView(_) => fallback(stdout, x_baseline, width, col),
+        DataType::LargeListView(_) => fallback(stdout, x_baseline, width, col),
+
         DataType::Struct(_) => fallback(stdout, x_baseline, width, col),
         DataType::Union(_, _) => fallback(stdout, x_baseline, width, col),
         DataType::Dictionary(_, _) => fallback(stdout, x_baseline, width, col),

@@ -71,10 +71,12 @@ impl ColumnStats {
 
             DataType::Utf8 => ColumnStats::new_string::<i32>(col!())?,
             DataType::LargeUtf8 => ColumnStats::new_string::<i64>(col!())?,
+            DataType::Utf8View => ColumnStats::fallback(col)?,
+
             DataType::Binary => ColumnStats::new_binary::<i32>(col!())?,
             DataType::LargeBinary => ColumnStats::new_binary::<i64>(col!())?,
             DataType::FixedSizeBinary(_) => ColumnStats::fallback(col)?, // TODO
-            DataType::Dictionary(_, _) => ColumnStats::fallback(col)?,   // TODO
+            DataType::BinaryView => ColumnStats::fallback(col)?,
 
             DataType::Date32 | DataType::Date64 => ColumnStats::fixed_len(10), // YYYY-MM-DD
             DataType::Time32(unit) | DataType::Time64(unit) => ColumnStats::fixed_len(match unit {
@@ -97,14 +99,16 @@ impl ColumnStats {
             DataType::Duration(_) => ColumnStats::fallback(col)?, // TODO
             DataType::Interval(_) => ColumnStats::fallback(col)?, // TODO
 
-            DataType::Struct(_) => ColumnStats::fallback(col)?,
-            DataType::Map(_, _) => ColumnStats::fallback(col)?,
-
             DataType::List(_) => ColumnStats::fallback(col)?,
             DataType::LargeList(_) => ColumnStats::fallback(col)?,
             DataType::FixedSizeList(_, _) => ColumnStats::fallback(col)?,
+            DataType::ListView(_) => ColumnStats::fallback(col)?,
+            DataType::LargeListView(_) => ColumnStats::fallback(col)?,
 
+            DataType::Struct(_) => ColumnStats::fallback(col)?,
             DataType::Union(_, _) => ColumnStats::fallback(col)?,
+            DataType::Dictionary(_, _) => ColumnStats::fallback(col)?,
+            DataType::Map(_, _) => ColumnStats::fallback(col)?,
             DataType::RunEndEncoded(_, _) => ColumnStats::fallback(col)?,
         };
         stats.ideal_width = stats.ideal_width.max(name.len() as u16).max(3);
