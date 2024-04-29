@@ -17,11 +17,7 @@ pub struct VirtualFile {
 }
 
 impl VirtualFile {
-    pub fn new(
-        path: &Path,
-        sort: Option<&str>,
-        filter: Option<&str>,
-    ) -> anyhow::Result<VirtualFile> {
+    pub fn new(path: &Path, sort: &[String], filter: Option<&str>) -> anyhow::Result<VirtualFile> {
         use datafusion::prelude::{ParquetReadOptions, SessionContext};
 
         let rt = Runtime::new()?;
@@ -33,9 +29,9 @@ impl VirtualFile {
 
         let schema = Arc::new(df.schema().into());
 
-        if let Some(sort) = sort {
-            let expr = parse_sort_expr(sort);
-            df = df.sort(vec![expr])?;
+        if !sort.is_empty() {
+            let exprs = sort.iter().map(parse_sort_expr).collect();
+            df = df.sort(exprs)?;
         }
         if let Some(filter) = filter {
             let expr = parse_filter_expr(filter, &schema)?;
@@ -81,7 +77,7 @@ impl DataSource for VirtualFile {
     }
 }
 
-fn parse_sort_expr(txt: &str) -> Expr {
+fn parse_sort_expr(txt: &String) -> Expr {
     use datafusion::prelude::*;
     if let Some(txt) = txt.strip_prefix('-') {
         col(txt).sort(false, true)

@@ -42,7 +42,7 @@ struct Opts {
     format: Option<String>,
     /// A column to sort by. Prefix with '-' to invert
     #[cfg(feature = "virt")]
-    sort: Option<String>,
+    sort: Vec<String>,
     /// A filter expression, eg. 'age > 30'
     #[cfg(feature = "virt")]
     filter: Option<String>,
@@ -88,17 +88,14 @@ fn main() -> anyhow::Result<()> {
 
 fn get_source(opts: &Opts) -> anyhow::Result<Box<dyn DataSource>> {
     #[cfg(feature = "virt")]
-    if opts.sort.is_some() || opts.filter.is_some() {
+    if !opts.sort.is_empty() || opts.filter.is_some() {
         let Some(path) = &opts.path else {
             bail!("Can't filter streaming data")
         };
         let ext = path.extension().and_then(|x| x.to_str());
         ensure!(ext == Some("parquet"), "Can't filter this file type");
-        let source = crate::backend::virt::VirtualFile::new(
-            path,
-            opts.sort.as_deref(),
-            opts.filter.as_deref(),
-        )?;
+        let source =
+            crate::backend::virt::VirtualFile::new(path, &opts.sort, opts.filter.as_deref())?;
         return Ok(Box::new(source));
     }
 
