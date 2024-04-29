@@ -28,5 +28,6 @@ tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 
 [features]
 default = ["parquet"]
-virt = ["datafusion", "tokio"]
-json = ["serde_json"]
+virt = ["dep:datafusion", "dep:tokio"]
+json = ["dep:serde_json"]
+parquet = ["dep:parquet"]
