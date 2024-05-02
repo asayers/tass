@@ -553,7 +553,8 @@ where
 
 fn print_text(stdout: &mut impl Write, txt: &str, width: u16) -> anyhow::Result<()> {
     if txt.len() > width as usize {
-        let txt = &txt[..width as usize - 1];
+        let slice_until = ceil_char_boundary(txt, width as usize - 1);
+        let txt = &txt[..slice_until];
         stdout
             .queue(style::Print(txt))?
             .queue(style::SetAttribute(style::Attribute::Reverse))?
@@ -563,4 +564,22 @@ fn print_text(stdout: &mut impl Write, txt: &str, width: u16) -> anyhow::Result<
         stdout.queue(style::Print(txt))?;
     }
     Ok(())
+}
+
+// Unstable library code copied from https://doc.rust-lang.org/stable/src/core/str/mod.rs.html#301
+pub fn ceil_char_boundary(text: &str, index: usize) -> usize {
+    let is_utf8_char_boundary = |b: u8| -> bool {
+        // This is bit magic equivalent to: b < 128 || b >= 192
+        (b as i8) >= -0x40
+    };
+
+    if index > text.len() {
+        text.len()
+    } else {
+        let upper_bound = Ord::min(index + 4, text.len());
+        text.as_bytes()[index..upper_bound]
+            .iter()
+            .position(|b| is_utf8_char_boundary(*b))
+            .map_or(upper_bound, |pos| pos + index)
+    }
 }
