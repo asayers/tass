@@ -1,3 +1,10 @@
+## 0.10.0
+
+* Support reverse search
+* Show the number of search hits
+* Reduce the amount of redrawing
+* Fix a crash involving unicode in the far-right column
+
 ## 0.9.0
 
 * Add support for TSV files
