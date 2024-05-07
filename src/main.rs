@@ -304,12 +304,13 @@ fn runloop(
                 event::Event::Mouse(ev) => prompt.handle_mouse(ev),
                 event::Event::Resize(cols, rows) => {
                     term_size = (cols, rows);
-                    None
+                    Some(Cmd::Redraw)
                 }
                 _ => None,
             };
             if let Some(cmd) = cmd {
                 match cmd {
+                    Cmd::Redraw => (),
                     Cmd::ColRight => {
                         start_col = (start_col + 1).min(source.col_stats.len().saturating_sub(1))
                     }
@@ -352,8 +353,8 @@ fn runloop(
                     }
                     Cmd::Exit => return Ok(()),
                 }
+                dirty = true;
             }
-            dirty = true;
         }
     }
 }

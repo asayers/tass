@@ -30,6 +30,7 @@ impl Dir {
 }
 
 pub enum Cmd {
+    Redraw,
     RowUp,
     RowDown,
     RowPgUp,
@@ -72,7 +73,7 @@ impl Prompt {
                 KeyCode::End | KeyCode::Char('G') => Some(Cmd::RowBottom),
                 KeyCode::Char('F') | KeyCode::Char('f') => {
                     self.mode = Mode::Follow;
-                    None
+                    Some(Cmd::Redraw)
                 }
                 KeyCode::Home => Some(Cmd::RowTop),
                 KeyCode::PageUp => Some(Cmd::RowPgUp),
@@ -81,12 +82,12 @@ impl Prompt {
                 KeyCode::Char('/') => {
                     self.input.clear();
                     self.mode = Mode::Search(Dir::Forward);
-                    None
+                    Some(Cmd::Redraw)
                 }
                 KeyCode::Char('?') => {
                     self.input.clear();
                     self.mode = Mode::Search(Dir::Reverse);
-                    None
+                    Some(Cmd::Redraw)
                 }
                 KeyCode::Char('n') => Some(Cmd::SearchNext),
                 KeyCode::Char('N') => Some(Cmd::SearchPrev),
@@ -100,25 +101,25 @@ impl Prompt {
                 }
                 KeyCode::Char(c @ '0'..='9') => {
                     self.input.push(c);
-                    None
+                    Some(Cmd::Redraw)
                 }
                 KeyCode::Backspace => {
                     self.input.pop();
-                    None
+                    Some(Cmd::Redraw)
                 }
                 _ => None,
             },
             Mode::Search(dir) => match key {
                 KeyCode::Char(c) => {
                     self.input.push(c);
-                    None
+                    Some(Cmd::Redraw)
                 }
                 KeyCode::Backspace => {
                     let x = self.input.pop();
                     if x.is_none() {
                         self.mode = Mode::Normal;
                     }
-                    None
+                    Some(Cmd::Redraw)
                 }
                 KeyCode::Enter => {
                     let needle = std::mem::take(&mut self.input);
@@ -128,7 +129,7 @@ impl Prompt {
                 KeyCode::Esc => {
                     self.input.clear();
                     self.mode = Mode::Normal;
-                    None
+                    Some(Cmd::Redraw)
                 }
                 // TODO: cursor
                 KeyCode::Left => None,
@@ -149,7 +150,7 @@ impl Prompt {
                 KeyCode::Char('q') => Some(Cmd::Exit),
                 _ => {
                     self.mode = Mode::Normal;
-                    None
+                    Some(Cmd::Redraw)
                 }
             },
         }
