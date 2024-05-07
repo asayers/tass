@@ -45,7 +45,7 @@ struct Opts {
     sort: Vec<String>,
     /// A filter expression, eg. 'age > 30'
     #[cfg(feature = "virt")]
-    filter: Option<String>,
+    filter: Vec<String>,
     /// The path to read.  If not specified, data will be read from stdin
     #[bpaf(positional)]
     path: Option<PathBuf>,
@@ -88,14 +88,13 @@ fn main() -> anyhow::Result<()> {
 
 fn get_source(opts: &Opts) -> anyhow::Result<Box<dyn DataSource>> {
     #[cfg(feature = "virt")]
-    if !opts.sort.is_empty() || opts.filter.is_some() {
+    if !opts.sort.is_empty() || !opts.filter.is_empty() {
         let Some(path) = &opts.path else {
             bail!("Can't filter streaming data")
         };
         let ext = path.extension().and_then(|x| x.to_str());
         ensure!(ext == Some("parquet"), "Can't filter this file type");
-        let source =
-            crate::backend::virt::VirtualFile::new(path, &opts.sort, opts.filter.as_deref())?;
+        let source = crate::backend::virt::VirtualFile::new(path, &opts.sort, &opts.filter)?;
         return Ok(Box::new(source));
     }
 

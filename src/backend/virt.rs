@@ -17,7 +17,7 @@ pub struct VirtualFile {
 }
 
 impl VirtualFile {
-    pub fn new(path: &Path, sort: &[String], filter: Option<&str>) -> anyhow::Result<VirtualFile> {
+    pub fn new(path: &Path, sort: &[String], filter: &[String]) -> anyhow::Result<VirtualFile> {
         use datafusion::prelude::{ParquetReadOptions, SessionContext};
 
         let rt = Runtime::new()?;
@@ -33,8 +33,11 @@ impl VirtualFile {
             let exprs = sort.iter().map(parse_sort_expr).collect();
             df = df.sort(exprs)?;
         }
-        if let Some(filter) = filter {
-            let expr = parse_filter_expr(filter, &schema)?;
+        let filters = filter
+            .iter()
+            .map(|filter| parse_filter_expr(filter, &schema))
+            .collect::<anyhow::Result<Vec<_>>>()?;
+        if let Some(expr) = datafusion::logical_expr::utils::conjunction(filters) {
             df = df.filter(expr)?;
         }
 
