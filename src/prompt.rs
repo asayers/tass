@@ -78,6 +78,7 @@ impl Prompt {
                 KeyCode::Home => Some(Cmd::RowTop),
                 KeyCode::PageUp => Some(Cmd::RowPgUp),
                 KeyCode::PageDown => Some(Cmd::RowPgDown),
+                KeyCode::PageDown | KeyCode::Char(' ') => Some(Cmd::RowPgDown),
                 KeyCode::Esc | KeyCode::Char('q') => Some(Cmd::Exit),
                 KeyCode::Char('/') => {
                     self.input.clear();
