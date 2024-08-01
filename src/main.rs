@@ -83,6 +83,9 @@ fn main() -> anyhow::Result<()> {
         .queue(terminal::LeaveAlternateScreen)?
         .flush()?;
     terminal::disable_raw_mode()?;
+
+    flush_logger();
+
     result
 }
 
@@ -367,10 +370,33 @@ fn next_match(matches: &[usize], current_row: usize, dir: Dir) -> Option<usize> 
     }
 }
 
+struct WriteThroughMutex<T: 'static>(&'static std::sync::Mutex<T>);
+impl<T: Write> Write for WriteThroughMutex<T> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().unwrap().write(buf)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.0.lock().unwrap().flush()
+    }
+}
+
+static LOG_BUFFER: std::sync::OnceLock<std::sync::Mutex<Vec<u8>>> = std::sync::OnceLock::new();
+
 fn init_logger() {
     use tracing_subscriber::prelude::*;
+    LOG_BUFFER.set(std::sync::Mutex::new(Vec::new())).unwrap();
     tracing_subscriber::registry()
-        .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_writer(|| WriteThroughMutex(LOG_BUFFER.get().unwrap())),
+        )
         .with(tracing_subscriber::filter::EnvFilter::from_default_env())
         .init();
+}
+
+fn flush_logger() {
+    std::io::stderr()
+        .write_all(LOG_BUFFER.get().unwrap().lock().unwrap().as_slice())
+        .unwrap();
 }
