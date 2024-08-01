@@ -24,7 +24,7 @@ use std::io::{LineWriter, Write};
 use std::ops::Range;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
-use tracing::debug;
+use tracing::{debug, warn};
 
 /// A pager for tabular data
 ///
@@ -167,7 +167,10 @@ impl CachedSource {
         debug!("Requested: {rows:?}; available: {:?}", self.available_rows);
         let start = Instant::now();
         let from = rows.start.saturating_sub(CHUNK_SIZE / 2);
-        self.big_df = self.inner.fetch_batch(from, CHUNK_SIZE)?;
+        match self.inner.fetch_batch(from, CHUNK_SIZE) {
+            Ok(x) => self.big_df = x,
+            Err(e) => warn!("{e}"),
+        }
         self.available_rows = from..(from + self.big_df.num_rows());
         debug!(took=?start.elapsed(),
             "Loaded a new batch (rows {:?}, {} MiB)",
