@@ -140,11 +140,15 @@ impl DataSource for CsvFile {
 
     fn fetch_batch(&mut self, offset: usize, len: usize) -> anyhow::Result<RecordBatch> {
         debug!(offset, len, "Fetching a batch");
+        if self.row_offsets.is_empty() {
+            return Ok(RecordBatch::new_empty(self.schema.clone()));
+        }
         let row_to_byte = |row: usize| -> u64 {
             self.row_offsets
                 .get(row)
+                .or_else(|| self.row_offsets.last())
                 .copied()
-                .unwrap_or_else(|| self.fs.end_pos())
+                .unwrap()
         };
         let byte_start = row_to_byte(offset);
         let byte_end = row_to_byte(offset + len + 1);
