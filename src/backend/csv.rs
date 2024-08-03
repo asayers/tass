@@ -169,3 +169,36 @@ impl DataSource for CsvFile {
         Ok(matches)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    // This tests the situation in which `tass` catches up with stdin, running out of bytes
+    // in the middle of a line.
+    #[test]
+    fn handles_unfinished_line() -> anyhow::Result<()> {
+        let data = "\
+a,b,c,d
+1,2,3,4
+5,6,7,8
+9,👻,10,11
+12,13,14,15";
+
+        let halfway_through_codepoint = data.find("👻").unwrap() + 1;
+
+        let mut tmp = tempfile::NamedTempFile::new()?;
+        tmp.write_all(&data.as_bytes()[..halfway_through_codepoint])?;
+
+        let mut source = CsvFile::new(File::open(tmp.path())?, b',')?;
+        source.check_for_new_rows()?;
+
+        tmp.write_all(&data.as_bytes()[halfway_through_codepoint..])?;
+        source.check_for_new_rows()?;
+
+        assert_eq!(source.row_offsets, [8, 16, 24, 37]);
+
+        Ok(())
+    }
+}
