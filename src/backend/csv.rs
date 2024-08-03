@@ -50,11 +50,22 @@ impl CsvFile {
     fn add_new_lines(&mut self) -> anyhow::Result<usize> {
         let n_rows_then = self.row_count();
         let mut line_start = self.row_offsets.last().copied().unwrap_or(0);
-        let new_lines = BufReader::new(self.fs.slice(line_start..)).lines();
+
+        let mut new_bytes = BufReader::new(self.fs.slice(line_start..));
         let start = Instant::now();
-        for line in new_lines {
-            line_start += line?.len() as u64 + 1;
+        let mut line = Vec::new();
+
+        loop {
+            new_bytes.read_until(b'\n', &mut line)?;
+
+            // If we reached EOF rather than a newline, ensure we don't record that as a row offset
+            if line.last().map_or(true, |b| *b != b'\n') {
+                break;
+            }
+            line_start += line.len() as u64;
             self.row_offsets.push(line_start);
+            line.clear();
+
             if start.elapsed() > Duration::from_millis(10) {
                 break;
             }
