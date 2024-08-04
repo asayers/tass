@@ -1,4 +1,4 @@
-use crossterm::event::{KeyCode, MouseButton, MouseEvent, MouseEventKind};
+use crossterm::event::{KeyCode, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use std::io::Write;
 
 #[derive(Default)]
@@ -63,7 +63,7 @@ impl Prompt {
         matches!(self.mode, Mode::Follow)
     }
 
-    pub fn handle_key(&mut self, key: KeyCode) -> Option<Cmd> {
+    pub fn handle_key(&mut self, key: KeyCode, modifiers: KeyModifiers) -> Option<Cmd> {
         match self.mode {
             Mode::Normal => match key {
                 KeyCode::Right | KeyCode::Char('l') => Some(Cmd::ColRight),
@@ -77,7 +77,10 @@ impl Prompt {
                 }
                 KeyCode::Home => Some(Cmd::RowTop),
                 KeyCode::PageUp => Some(Cmd::RowPgUp),
-                KeyCode::PageDown => Some(Cmd::RowPgDown),
+                KeyCode::Char('b') if modifiers.contains(KeyModifiers::CONTROL) => {
+                    Some(Cmd::RowPgUp)
+                }
+                KeyCode::PageDown | KeyCode::Char(' ') => Some(Cmd::RowPgDown),
                 KeyCode::Esc | KeyCode::Char('q') => Some(Cmd::Exit),
                 KeyCode::Char('/') => {
                     self.input.clear();
