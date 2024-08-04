@@ -51,10 +51,46 @@ struct Opts {
     path: Option<PathBuf>,
 }
 
-fn main() -> anyhow::Result<()> {
+fn main() {
+    let opts = opts().run();
+
     init_logger();
 
-    let opts = opts().run();
+    let result = run(opts);
+
+    flush_logger();
+
+    if let Err(e) = result {
+        eprintln!("{e}");
+    }
+}
+
+/// Set up the terminal for raw-mode operation
+fn setup_term() -> anyhow::Result<RawTermGuard> {
+    terminal::enable_raw_mode().context("entering raw mode")?;
+    std::io::stdout()
+        .queue(terminal::EnterAlternateScreen)?
+        .queue(terminal::DisableLineWrap)?
+        .queue(event::EnableMouseCapture)?
+        .flush()?;
+    Ok(RawTermGuard)
+}
+struct RawTermGuard;
+impl Drop for RawTermGuard {
+    /// Restore the terminal to its original state, ignoring errors
+    fn drop(&mut self) {
+        let mut stdout = std::io::stdout();
+        let _ = stdout.queue(event::DisableMouseCapture);
+        let _ = stdout.queue(terminal::EnableLineWrap);
+        let _ = stdout.queue(terminal::LeaveAlternateScreen);
+        let _ = stdout.flush();
+        let _ = terminal::disable_raw_mode();
+    }
+}
+
+fn run(opts: Opts) -> anyhow::Result<()> {
+    let guard = setup_term()?;
+
     let settings = RenderSettings {
         float_dps: opts.precision,
         hide_empty: opts.hide_empty,
@@ -65,28 +101,10 @@ fn main() -> anyhow::Result<()> {
     let stdout = std::io::stdout();
     let mut stdout = BufWriter::new(stdout.lock());
 
-    // Set up terminal
-    terminal::enable_raw_mode().context("entering raw mode")?;
-    stdout
-        .queue(terminal::EnterAlternateScreen)?
-        .queue(terminal::DisableLineWrap)?
-        .queue(event::EnableMouseCapture)?
-        .flush()?;
+    runloop(&mut stdout, source, settings)?;
 
-    // Store the result so the cleanup happens even if there's an error
-    let result = runloop(&mut stdout, source, settings);
-
-    // Clean up terminal
-    stdout
-        .queue(event::DisableMouseCapture)?
-        .queue(terminal::EnableLineWrap)?
-        .queue(terminal::LeaveAlternateScreen)?
-        .flush()?;
-    terminal::disable_raw_mode()?;
-
-    flush_logger();
-
-    result
+    std::mem::drop(guard);
+    Ok(())
 }
 
 fn get_source(opts: &Opts) -> anyhow::Result<Box<dyn DataSource>> {
