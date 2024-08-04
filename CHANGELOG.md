@@ -1,3 +1,9 @@
+## 0.10.1
+
+* Fix a crash which could occur when streaming CSV
+* Try harder to restore the terminal state after an error
+* Print logs cleanly to the terminal
+
 ## 0.10.0
 
 * Support reverse search
