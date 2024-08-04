@@ -1,5 +1,4 @@
 use super::DataSource;
-use anyhow::bail;
 use arrow::datatypes::{DataType, Field, Schema, SchemaBuilder};
 use arrow::json::reader::infer_json_schema;
 use arrow::json::ReaderBuilder;
