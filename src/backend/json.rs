@@ -62,9 +62,14 @@ impl JsonFile {
                 (x, DataType::Null) => x.clone(),
                 (DataType::Null, y) => y.clone(),
                 (x, y) if x == y => x.clone(),
-                (x, y) => {
+                (x, y) if stringlike(x) && stringlike(y) => {
                     info!("{x} & {y}: Casting to Utf8");
                     DataType::Utf8
+                }
+                (x, y) => {
+                    error!("Can't unify {x} & {y}");
+                    warn!("Dropping column");
+                    continue;
                 }
             };
             let merged = Field::new(name, dtype, nullable);
@@ -95,6 +100,22 @@ impl JsonFile {
         self.schema = bldr.finish().into();
         debug!("Merged new schema into the existing one");
     }
+}
+
+fn stringlike(dt: &DataType) -> bool {
+    matches!(
+        dt,
+        DataType::Timestamp(..)
+            | DataType::Date32
+            | DataType::Date64
+            | DataType::Time32(..)
+            | DataType::Time64(..)
+            | DataType::Duration(..)
+            | DataType::Interval(..)
+            | DataType::Utf8
+            | DataType::LargeUtf8
+            | DataType::Utf8View
+    )
 }
 
 impl DataSource for JsonFile {
