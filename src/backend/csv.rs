@@ -1,6 +1,6 @@
 use super::DataSource;
-use arrow::csv::reader::Format;
 use arrow::csv::ReaderBuilder;
+use arrow::csv::reader::Format;
 use arrow::datatypes::{DataType, Field, Schema, SchemaBuilder};
 use arrow::record_batch::RecordBatch;
 use fileslice::FileSlice;
@@ -59,7 +59,7 @@ impl CsvFile {
             new_bytes.read_until(b'\n', &mut line)?;
 
             // If we reached EOF rather than a newline, ensure we don't record that as a row offset
-            if line.last().map_or(true, |b| *b != b'\n') {
+            if line.last().is_none_or(|b| *b != b'\n') {
                 break;
             }
             line_start += line.len() as u64;

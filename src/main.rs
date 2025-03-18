@@ -7,10 +7,10 @@ use crate::backend::DataSource;
 use crate::draw::*;
 use crate::prompt::*;
 use crate::stats::*;
+use anyhow::Context;
 use anyhow::bail;
 #[cfg(feature = "virt")]
 use anyhow::ensure;
-use anyhow::Context;
 use arrow::datatypes::Schema;
 use arrow::record_batch::RecordBatch;
 use bpaf::{Bpaf, Parser};
@@ -335,7 +335,7 @@ fn runloop(
                     event::KeyCode::Char('c')
                         if k.modifiers.contains(event::KeyModifiers::CONTROL) =>
                     {
-                        return Ok(())
+                        return Ok(());
                     }
                     code => prompt.handle_key(code),
                 },

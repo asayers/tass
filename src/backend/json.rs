@@ -1,7 +1,7 @@
 use super::DataSource;
 use arrow::datatypes::{DataType, Field, Schema, SchemaBuilder};
-use arrow::json::reader::infer_json_schema;
 use arrow::json::ReaderBuilder;
+use arrow::json::reader::infer_json_schema;
 use arrow::record_batch::RecordBatch;
 use fileslice::FileSlice;
 use std::fs::File;
