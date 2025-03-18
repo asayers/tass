@@ -1,3 +1,10 @@
+## 0.10.2
+
+* Only show the first line of multi-line fields
+* When inferring the schema for json, drop columns with inconstently-typed values
+* Add a `--column` flag for manually specifying the ordering of columns
+* Tweak the category colour picker for better uniformity
+
 ## 0.10.1
 
 * Fix a crash which could occur when streaming CSV
