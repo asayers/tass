@@ -296,9 +296,14 @@ fn fallback(
     Ok(())
 }
 
-fn hsl_to_color(hsl: hsl::HSL) -> style::Color {
-    let (r, g, b) = hsl.to_rgb();
-    style::Color::Rgb { r, g, b }
+fn oklch_to_color(oklch: [f32; 3]) -> style::Color {
+    use color::{ColorSpace, Oklch};
+    let [r, g, b] = Oklch::to_linear_srgb(oklch);
+    style::Color::Rgb {
+        r: (r * 255.) as u8,
+        g: (g * 255.) as u8,
+        b: (b * 255.) as u8,
+    }
 }
 
 fn draw_utf8_col<T: OffsetSizeTrait>(
@@ -319,11 +324,7 @@ fn draw_utf8_col<T: OffsetSizeTrait>(
             for byte in val.bytes() {
                 hash = ((hash << 5) + hash) + byte;
             }
-            let fg = hsl_to_color(hsl::HSL {
-                h: hash as f64 * 360. / 255.,
-                s: 0.5,
-                l: 0.7,
-            });
+            let fg = oklch_to_color([0.9, 0.07, hash as f32 * 360. / 255.]);
             stdout.queue(style::SetForegroundColor(fg))?;
         }
         print_text(stdout, val, width)?;
@@ -385,19 +386,11 @@ where
         }
         match val.cmp(&false.into()) {
             Ordering::Equal => {
-                let fg = hsl_to_color(hsl::HSL {
-                    h: 0.0,
-                    s: 0.0,
-                    l: 0.6,
-                });
+                let fg = oklch_to_color([0.75, 0.0, 0.0]);
                 stdout.queue(style::SetForegroundColor(fg))?;
             }
             Ordering::Less => {
-                let fg = hsl_to_color(hsl::HSL {
-                    h: 0.0,
-                    s: 0.7,
-                    l: 0.75,
-                });
+                let fg = oklch_to_color([0.8, 0.15, 0.0]);
                 stdout.queue(style::SetForegroundColor(fg))?;
             }
             Ordering::Greater => (),
