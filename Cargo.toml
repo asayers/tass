@@ -9,22 +9,22 @@ readme = "README.md"
 repository = "https://github.com/asayers/tass"
 
 [dependencies]
-anyhow = { version = "1.0.75", features = ["backtrace"] }
+anyhow = { version = "1.0.97", features = ["backtrace"] }
 arrow = { version = "54.2.1", features = ["chrono-tz"] }
-bpaf = { version = "0.9.11", features = ["derive"] }
-chrono = "0.4.31"
-chrono-tz = "0.9"
+bpaf = { version = "0.9.19", features = ["derive"] }
+chrono = "0.4.39"
+chrono-tz = "0.10"
 crossterm = "0.28.1"
 datafusion = { version = "46.0.0", optional = true }
 fileslice = { version = "0.5", default-features = false }
 hsl = "0.1.1"
-memchr = "2.6.4"
+memchr = "2.7.4"
 parquet = { version = "54.2.1", optional = true }
-serde_json = { version = "1.0.107", optional = true }
-tempfile = "3.8.1"
-tokio = { version = "1.39", optional = true, features = ["rt", "rt-multi-thread"] }
-tracing = "0.1.40"
-tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+serde_json = { version = "1.0.140", optional = true }
+tempfile = "3.19.0"
+tokio = { version = "1.44", optional = true, features = ["rt", "rt-multi-thread"] }
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 
 [features]
 default = ["parquet"]
