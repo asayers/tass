@@ -26,7 +26,7 @@ tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 
 [features]
-default = ["parquet"]
+default = ["parquet", "json"]
 virt = ["dep:datafusion", "dep:tokio"]
 json = []
 parquet = ["dep:parquet"]
