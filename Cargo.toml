@@ -14,7 +14,7 @@ arrow = { version = "52", features = ["chrono-tz"] }
 bpaf = { version = "0.9.11", features = ["derive"] }
 chrono = "0.4.31"
 chrono-tz = "0.9"
-crossterm = "0.27.0"
+crossterm = "0.28.1"
 datafusion = { version = "40", optional = true }
 fileslice = { version = "0.5", default-features = false }
 hsl = "0.1.1"
