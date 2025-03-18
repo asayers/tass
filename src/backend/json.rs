@@ -74,17 +74,19 @@ impl JsonFile {
             }
             bldr.push(merged);
         }
-        for new in schema.fields() {
-            if self.schema.fields().find(new.name()).is_none() {
-                let new = match new.data_type() {
-                    DataType::Timestamp(_, _) => {
-                        Field::clone(new).with_data_type(DataType::Utf8).into()
-                    }
-                    _ => new.clone(),
-                };
-                info!("New field {}: {}", new.name(), new.data_type());
-                bldr.push(new);
-            }
+        for new in schema
+            .fields()
+            .iter()
+            .filter(|x| self.schema.fields().find(x.name()).is_none())
+        {
+            let new = match new.data_type() {
+                DataType::Timestamp(_, _) => {
+                    Field::clone(new).with_data_type(DataType::Utf8).into()
+                }
+                _ => new.clone(),
+            };
+            info!("New field {}: {}", new.name(), new.data_type());
+            bldr.push(new);
         }
         self.schema = bldr.finish().into();
         debug!("Merged new schema into the existing one");
