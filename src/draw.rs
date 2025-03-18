@@ -551,10 +551,18 @@ where
     Ok(())
 }
 
-fn print_text(stdout: &mut impl Write, txt: &str, width: u16) -> anyhow::Result<()> {
+fn print_text(stdout: &mut impl Write, mut txt: &str, width: u16) -> anyhow::Result<()> {
+    let mut truncated = false;
+    if let Some(idx) = txt.find('\n') {
+        txt = &txt[..idx];
+        truncated = true;
+    }
     if txt.len() > width as usize {
         let slice_until = ceil_char_boundary(txt, width as usize - 1);
-        let txt = &txt[..slice_until];
+        txt = &txt[..slice_until];
+        truncated = true;
+    }
+    if truncated {
         stdout
             .queue(style::Print(txt))?
             .queue(style::SetAttribute(style::Attribute::Reverse))?
