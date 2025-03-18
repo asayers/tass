@@ -138,10 +138,13 @@ fn get_source(opts: &Opts) -> anyhow::Result<Box<dyn DataSource>> {
     Ok(match opts.format.as_deref().or(ext) {
         #[cfg(feature = "parquet")]
         Some("parquet") => Box::new(crate::backend::parquet::ParquetFile::new(file)?),
+        #[cfg(feature = "csv")]
         Some("csv") => Box::new(crate::backend::csv::CsvFile::new(file, b',')?),
+        #[cfg(feature = "csv")]
         Some("tsv") => Box::new(crate::backend::csv::CsvFile::new(file, b'\t')?),
         #[cfg(feature = "json")]
         Some("json" | "jsonl" | "ndjson") => Box::new(crate::backend::json::JsonFile::new(file)?),
+        #[cfg(feature = "csv")]
         None => Box::new(crate::backend::csv::CsvFile::new(file, b',')?),
         _ => bail!("Unrecognised file extension"),
     })

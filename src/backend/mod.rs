@@ -1,3 +1,4 @@
+#[cfg(feature = "json")]
 pub mod csv;
 #[cfg(feature = "json")]
 pub mod json;
