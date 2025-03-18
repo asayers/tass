@@ -46,6 +46,8 @@ struct Opts {
     /// A filter expression, eg. 'age > 30'
     #[cfg(feature = "virt")]
     filter: Vec<String>,
+    /// Move this column to the left
+    column: Vec<String>,
     /// The path to read.  If not specified, data will be read from stdin
     #[bpaf(positional)]
     path: Option<PathBuf>,
@@ -96,7 +98,7 @@ fn run(opts: Opts) -> anyhow::Result<()> {
         hide_empty: opts.hide_empty,
     };
 
-    let source = CachedSource::new(get_source(&opts)?);
+    let source = CachedSource::new(get_source(&opts)?, opts.column);
 
     let stdout = std::io::stdout();
     let mut stdout = BufWriter::new(stdout.lock());
@@ -148,6 +150,7 @@ fn get_source(opts: &Opts) -> anyhow::Result<Box<dyn DataSource>> {
 const CHUNK_SIZE: usize = 10_000;
 
 struct CachedSource {
+    rearranged_columns: Vec<String>,
     inner: Box<dyn DataSource>,
     all_col_stats: Vec<ColumnStats>, // One per column
     // The below refer to the loaded record batch
@@ -158,8 +161,9 @@ struct CachedSource {
 }
 
 impl CachedSource {
-    fn new(source: Box<dyn DataSource>) -> Self {
+    fn new(source: Box<dyn DataSource>, rearranged_columns: Vec<String>) -> Self {
         CachedSource {
+            rearranged_columns,
             inner: source,
             all_col_stats: vec![],
             big_df: RecordBatch::new_empty(Schema::empty().into()),
@@ -214,8 +218,18 @@ impl CachedSource {
         }
         self.col_stats.clear();
         self.available_cols.clear();
+        // Explicitly rearranged columns go first
+        for target in &self.rearranged_columns {
+            if let Some((idx, _)) = self.big_df.schema().column_with_name(target) {
+                self.available_cols.push(idx);
+                self.col_stats.push(self.all_col_stats[idx].clone());
+            }
+        }
+        let explicit_up_to = self.available_cols.len();
         for (idx, col) in self.big_df.columns().iter().enumerate() {
-            if !settings.hide_empty || col.null_count() < col.len() {
+            let explicit = self.available_cols[..explicit_up_to].contains(&idx);
+            let hidden = settings.hide_empty && col.null_count() == col.len();
+            if !explicit && !hidden {
                 self.available_cols.push(idx);
                 self.col_stats.push(self.all_col_stats[idx].clone());
             }
