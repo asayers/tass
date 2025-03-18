@@ -2,12 +2,12 @@
 <p align="center">A pager for tabular data</p>
 
 `tass` - it's like `less`, but for tables!  It can read CSV/TSV and parquet
-files.  It looks like this:
+files, and even ND-JSON in a pinch.  It looks like this:
 
 <img src="https://github.com/asayers/tass/raw/master/demo.png">
 
 You can see tass's schema inference in action here. The fourth and fifth
-columns only contains a small number of unique values, so tass colour-codes
+columns only contain a small number of unique values, so tass colour-codes
 them automatically. The columns to the right of those are numerical, so tass
 right-aligns them and shows negative values in red.
 
@@ -49,13 +49,14 @@ number <kbd>g</kbd>                               | Move to line `$number`
 
 ## Comparison to other tools
 
-Tool                             | Functionality                      | Filetypes                   | Loads whole file into memory | Streaming 
----------------------------------|------------------------------------|-----------------------------|------------------------------|-----------
-tass                             | ⭐ Viewing data, basic searching   | CSV/TSV, parquet            | no 😌                        | ✔️ 
-[csvlens]                        | ⭐ Similar to tass                 | CSV/TSV                     | no 😌                        | ✔️ 
-[VisiData]                       | ⭐⭐ Summary stats, plots, etc.    | CSV/TSV, parquet, JSON, ... | yes 😱                       | ✔️ 
-Excel/Calc/Numbers/Google Sheets | ⭐⭐⭐ It's a spreadsheet!         | CSV/TSV, xls, ods, ...      | yes 😱                       |
-Pandas/Polars/DataFrame.jl       | ⭐⭐⭐ It's a dataframe library!   | CSV/TSV, parquet, ...       | no 😌                        |
+Tool                             | Functionality                    | Convenience          | Filetypes                   | Loads whole file into memory | Live view growing data
+---------------------------------|----------------------------------|----------------------|-----------------------------|------------------------------|------------------------
+tass                             | ⭐ Viewing data, basic searching | 🚀 Snappy TUI        | CSV/TSV, parquet, JSON      | no 😌                        | ✔️ 
+[csvlens]                        | ⭐ Similar to tass               | 🚀 Similar to tass   | CSV/TSV                     | no 😌                        | ✔️ 
+[VisiData]                       | ⭐⭐ Summary stats, plots, etc.  | TUI, a bit clunky    | CSV/TSV, parquet, JSON, ... | yes 😱                       | ✔️ 
+Excel/Calc/Numbers/Google Sheets | ⭐⭐ It's a spreadsheet!         | ⏳ Launch a GUI app  | CSV/TSV, xls, ods, ...      | yes 😱                       | ❌
+Pandas/Polars/DataFrame.jl       | ⭐⭐⭐ It's a dataframe library! | ⏳ A bunch of typing | CSV/TSV, parquet, ...       | it depends                   | ❌
+duckdb                           | ⭐⭐⭐ It's a database!          | ⏳ A bunch of typing | CSV/TSV, parquet, ...       | it depends                   | ❌
 
 [VisiData]: https://www.visidata.org/
 [csvlens]: https://github.com/YS-L/csvlens
