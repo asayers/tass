@@ -20,7 +20,6 @@ fileslice = { version = "0.5", default-features = false }
 hsl = "0.1.1"
 memchr = "2.7.4"
 parquet = { version = "54.2.1", optional = true }
-serde_json = { version = "1.0.140", optional = true }
 tempfile = "3.19.0"
 tokio = { version = "1.44", optional = true, features = ["rt", "rt-multi-thread"] }
 tracing = "0.1.41"
@@ -29,5 +28,5 @@ tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 [features]
 default = ["parquet"]
 virt = ["dep:datafusion", "dep:tokio"]
-json = ["dep:serde_json"]
+json = []
 parquet = ["dep:parquet"]
