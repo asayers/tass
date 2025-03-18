@@ -8,7 +8,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, info_span, warn};
 
 pub struct JsonFile {
     fs: FileSlice,
@@ -52,6 +52,7 @@ impl JsonFile {
                 continue;
             };
             let name = old.name();
+            let _g = info_span!("", name).entered();
             let nullable = old.is_nullable()
                 || new.is_nullable()
                 || old.data_type() == &DataType::Null
@@ -61,13 +62,15 @@ impl JsonFile {
                 (x, DataType::Null) => x.clone(),
                 (DataType::Null, y) => y.clone(),
                 (x, y) if x == y => x.clone(),
-                _ => DataType::Utf8,
+                (x, y) => {
+                    info!("{x} & {y}: Casting to Utf8");
+                    DataType::Utf8
+                }
             };
             let merged = Field::new(name, dtype, nullable);
             if &merged != old.as_ref() {
                 info!(
-                    "Updated schema for {}: {} -> {}",
-                    old.name(),
+                    "Updated schema: {} -> {}",
                     old.data_type(),
                     merged.data_type(),
                 );
@@ -79,13 +82,14 @@ impl JsonFile {
             .iter()
             .filter(|x| self.schema.fields().find(x.name()).is_none())
         {
+            let _g = info_span!("", name = new.name()).entered();
             let new = match new.data_type() {
                 DataType::Timestamp(_, _) => {
                     Field::clone(new).with_data_type(DataType::Utf8).into()
                 }
                 _ => new.clone(),
             };
-            info!("New field {}: {}", new.name(), new.data_type());
+            info!("New field: {}", new.data_type());
             bldr.push(new);
         }
         self.schema = bldr.finish().into();
