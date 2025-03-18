@@ -80,7 +80,7 @@ impl DataSource for VirtualFile {
     }
 }
 
-fn parse_sort_expr(txt: &String) -> Expr {
+fn parse_sort_expr(txt: &String) -> datafusion::logical_expr::SortExpr {
     use datafusion::prelude::*;
     if let Some(txt) = txt.strip_prefix('-') {
         col(txt).sort(false, true)
