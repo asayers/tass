@@ -340,7 +340,7 @@ fn runloop(
                     {
                         return Ok(());
                     }
-                    code => prompt.handle_key(code),
+                    code => prompt.handle_key(code, k.modifiers),
                 },
                 event::Event::Mouse(ev) => prompt.handle_mouse(ev),
                 event::Event::Resize(cols, rows) => {
