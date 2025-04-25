@@ -365,6 +365,36 @@ fn draw_int_col<T: ArrowPrimitiveType>(
 where
     T::Native: Display,
     T::Native: PartialOrd,
+    T::Native: Zero,
+{
+    draw_num_col(stdout, x_baseline, width, col, 0)
+}
+
+fn draw_float_col<T: ArrowPrimitiveType>(
+    stdout: &mut impl Write,
+    x_baseline: u16,
+    width: u16,
+    col: &PrimitiveArray<T>,
+    settings: &RenderSettings,
+) -> anyhow::Result<()>
+where
+    T::Native: Display,
+    T::Native: PartialOrd,
+    T::Native: Zero,
+{
+    draw_num_col(stdout, x_baseline, width, col, settings.float_dps)
+}
+
+fn draw_num_col<T: ArrowPrimitiveType>(
+    stdout: &mut impl Write,
+    x_baseline: u16,
+    width: u16,
+    col: &PrimitiveArray<T>,
+    prec: usize,
+) -> anyhow::Result<()>
+where
+    T::Native: Display,
+    T::Native: PartialOrd,
     T::Native: Zero, // half::f16 doesn't implement Signed
 {
     let mut buf = String::new();
@@ -378,7 +408,7 @@ where
         {
             buf.clear();
             use std::fmt::Write;
-            write!(&mut buf, "{val}")?;
+            write!(&mut buf, "{val:.prec$}")?;
         }
         // right-align
         let w = (width as usize).saturating_sub(buf.len());
@@ -396,38 +426,6 @@ where
         }
         print_text(stdout, &buf, width)?;
         stdout.queue(style::SetForegroundColor(style::Color::Reset))?;
-    }
-
-    Ok(())
-}
-
-fn draw_float_col<T: ArrowPrimitiveType>(
-    stdout: &mut impl Write,
-    x_baseline: u16,
-    width: u16,
-    col: &PrimitiveArray<T>,
-    settings: &RenderSettings,
-) -> anyhow::Result<()>
-where
-    T::Native: Display,
-{
-    let mut buf = String::new();
-
-    for (row, val) in col.iter().enumerate() {
-        let Some(val) = val else { continue };
-        stdout.queue(cursor::MoveTo(
-            x_baseline + 2,
-            u16::try_from(row).unwrap() + HEADER_HEIGHT,
-        ))?;
-        buf.clear();
-        use std::fmt::Write;
-        write!(&mut buf, "{val:.prec$}", prec = settings.float_dps)?;
-        // right-align
-        let w = (width as usize).saturating_sub(buf.len());
-        if w > 0 {
-            write!(stdout, "{:<w$}", " ", w = w)?;
-        }
-        print_text(stdout, &buf, width)?;
     }
 
     Ok(())
