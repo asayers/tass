@@ -2594,6 +2594,7 @@ dependencies = [
  "datafusion",
  "fileslice",
  "memchr",
+ "num-traits",
  "parquet",
  "tempfile",
  "tokio",

@@ -12,7 +12,8 @@ use arrow::{
 use chrono::TimeZone;
 use chrono_tz::Tz;
 use crossterm::*;
-use std::{cmp::Ordering, collections::HashSet, fmt::Display, io::Write};
+use num_traits::Zero;
+use std::{collections::HashSet, fmt::Display, io::Write};
 use tracing::debug;
 
 pub const HEADER_HEIGHT: u16 = 1;
@@ -363,8 +364,8 @@ fn draw_int_col<T: ArrowPrimitiveType>(
 ) -> anyhow::Result<()>
 where
     T::Native: Display,
-    T::Native: Ord,
-    T::Native: From<bool>,
+    T::Native: PartialOrd,
+    T::Native: Zero, // half::f16 doesn't implement Signed
 {
     let mut buf = String::new();
 
@@ -384,16 +385,14 @@ where
         if w > 0 {
             write!(stdout, "{:<w$}", " ", w = w)?;
         }
-        match val.cmp(&false.into()) {
-            Ordering::Equal => {
-                let fg = oklch_to_color([0.75, 0.0, 0.0]);
-                stdout.queue(style::SetForegroundColor(fg))?;
-            }
-            Ordering::Less => {
-                let fg = oklch_to_color([0.8, 0.15, 0.0]);
-                stdout.queue(style::SetForegroundColor(fg))?;
-            }
-            Ordering::Greater => (),
+        let zero = T::Native::zero();
+        if val == zero {
+            let fg = oklch_to_color([0.75, 0.0, 0.0]);
+            stdout.queue(style::SetForegroundColor(fg))?;
+        }
+        if val < zero {
+            let fg = oklch_to_color([0.8, 0.15, 0.0]);
+            stdout.queue(style::SetForegroundColor(fg))?;
         }
         print_text(stdout, &buf, width)?;
         stdout.queue(style::SetForegroundColor(style::Color::Reset))?;
