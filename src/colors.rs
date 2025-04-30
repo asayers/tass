@@ -5,7 +5,7 @@ use arrow::{
 };
 use crossterm::*;
 use num_traits::Zero;
-use std::fmt::Display;
+use std::{fmt::Display, hash::BuildHasher};
 
 pub fn col_colors(
     col: &dyn Array,
@@ -75,11 +75,11 @@ fn utf8_colors<T: OffsetSizeTrait>(
 ) -> Box<dyn Iterator<Item = Option<style::Color>> + '_> {
     Box::new(col.iter().map(|val| {
         let val = val?;
-        let mut hash = 7;
-        for byte in val.bytes() {
-            hash = ((hash << 5) + hash) + byte;
-        }
-        Some(oklch_to_color([0.9, 0.07, hash as f32 * 360. / 255.]))
+        let hash = foldhash::quality::FixedState::with_seed(0).hash_one(&val);
+        // Use the top 24 bits for uniform precision
+        let top24 = hash >> (64 - 24);
+        let normed = top24 as f32 / (1u32 << 24) as f32;
+        Some(oklch_to_color([0.9, 0.07, normed * 360.]))
     }))
 }
 
