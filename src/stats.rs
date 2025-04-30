@@ -1,6 +1,7 @@
 use crate::{draw::RenderSettings, strings::to_strings};
 use arrow::array::Array;
 use std::hash::BuildHasher;
+use unicode_width::UnicodeWidthStr;
 
 #[derive(Debug, Clone, Copy)]
 pub struct ColumnStats {
@@ -23,7 +24,7 @@ impl ColumnStats {
 
     fn single(txt: String) -> Self {
         ColumnStats {
-            ideal_width: txt.len() as u16, // TODO: unicode_width
+            ideal_width: txt.width() as u16,
             cardinality: foldhash::quality::FixedState::with_seed(0).hash_one(&txt),
         }
     }

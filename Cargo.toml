@@ -26,6 +26,7 @@ tempfile = "3.19.1"
 tokio = { version = "1.44", optional = true, features = ["rt", "rt-multi-thread"] }
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+unicode-width = "0.2.0"
 
 [features]
 default = ["parquet", "csv", "json"]
