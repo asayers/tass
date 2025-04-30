@@ -156,7 +156,7 @@ fn draw_col(
 ) -> anyhow::Result<()> {
     let strings = to_strings(col, settings);
     let align = col_alignment(col);
-    let colors = col_colors(col, stats);
+    let colors = col_colors(col, stats, settings);
     for (row, (txt, color)) in strings.zip(colors).enumerate() {
         stdout.queue(cursor::MoveTo(
             x_baseline + 2,

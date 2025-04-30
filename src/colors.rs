@@ -1,6 +1,6 @@
-use crate::ColumnStats;
+use crate::{ColumnStats, RenderSettings, strings::to_strings};
 use arrow::{
-    array::{Array, BooleanArray, GenericStringArray, OffsetSizeTrait, PrimitiveArray},
+    array::{Array, BooleanArray, PrimitiveArray},
     datatypes::*,
 };
 use crossterm::*;
@@ -10,6 +10,7 @@ use std::{fmt::Display, hash::BuildHasher};
 pub fn col_colors(
     col: &dyn Array,
     stats: &ColumnStats,
+    settings: RenderSettings,
 ) -> impl Iterator<Item = Option<style::Color>> {
     macro_rules! col {
         () => {
@@ -18,6 +19,7 @@ pub fn col_colors(
     }
     match col.data_type() {
         DataType::Boolean => bool_colors(col!()),
+        _ if stats.cardinality.is_some() => low_card(col, settings),
         DataType::Int8 => num_colors::<Int8Type>(col!()),
         DataType::Int16 => num_colors::<Int16Type>(col!()),
         DataType::Int32 => num_colors::<Int32Type>(col!()),
@@ -29,11 +31,8 @@ pub fn col_colors(
         DataType::Float16 => num_colors::<Float16Type>(col!()),
         DataType::Float32 => num_colors::<Float32Type>(col!()),
         DataType::Float64 => num_colors::<Float64Type>(col!()),
-        // DataType::Decimal128(_, _) => fallback(col),
-        // DataType::Decimal256(_, _) => fallback(col),
-        DataType::Utf8 if stats.cardinality.is_some() => utf8_colors::<i32>(col!()),
-        DataType::LargeUtf8 if stats.cardinality.is_some() => utf8_colors::<i64>(col!()),
-        // DataType::Utf8View => fallback(col),
+        // DataType::Decimal128(_, _) => // TODO,
+        // DataType::Decimal256(_, _) => // TODO,
         _ => Box::new(std::iter::repeat(None).take(col.len())),
     }
 }
@@ -67,11 +66,11 @@ where
     }))
 }
 
-fn utf8_colors<T: OffsetSizeTrait>(
-    col: &GenericStringArray<T>,
+fn low_card(
+    col: &dyn Array,
+    settings: RenderSettings,
 ) -> Box<dyn Iterator<Item = Option<style::Color>> + '_> {
-    Box::new(col.iter().map(|val| {
-        let val = val?;
+    Box::new(to_strings(col, settings).map(|val| {
         let hash = foldhash::quality::FixedState::with_seed(0).hash_one(&val);
         // Use the top 24 bits for uniform precision
         let top24 = hash >> (64 - 24);
