@@ -1,3 +1,14 @@
+## 0.11.0
+
+* Column widths are now sized correctly, even when containing CJK, emoji, or
+  other double-width scripts
+* More colours!
+    * Booleans now have hard-coded colours: `true` is green and `false` is red
+    * Floats are now coloured in the same way as integers: negatives in red, zeroes dimmed
+    * Any type can be rendered in rainbow-mode, if its cardinality is low enough
+* The `--precision` flag now maxes out at 255 (down from 18 sextillion - sorry
+  precision-lovers with universe-spanning monitors!)
+
 ## 0.10.2
 
 * Only show the first line of multi-line fields
