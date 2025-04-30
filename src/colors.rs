@@ -41,11 +41,8 @@ pub fn col_colors(
 fn bool_colors(col: &BooleanArray) -> Box<dyn Iterator<Item = Option<style::Color>> + '_> {
     Box::new(col.iter().map(|val| {
         let val = val?;
-        if val {
-            Some(oklch_to_color([0.8, 0.15, 0.5]))
-        } else {
-            Some(oklch_to_color([0.8, 0.15, 0.0]))
-        }
+        let hue = if val { 180. } else { 0.0 };
+        Some(oklch_to_color([0.85, 0.15, hue]))
     }))
 }
 
