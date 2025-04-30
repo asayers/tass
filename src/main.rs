@@ -34,7 +34,7 @@ use tracing::{debug, warn};
 struct Opts {
     /// How many decimal places to show when rendering floating-point numbers
     #[bpaf(fallback(5))]
-    precision: usize,
+    precision: u8,
     /// Whether to hide empty columns
     hide_empty: bool,
     /// The format of the data.  Inferred from the file extension if unspecified
@@ -181,7 +181,7 @@ impl CachedSource {
     fn ensure_available(
         &mut self,
         rows: Range<usize>,
-        settings: &RenderSettings,
+        settings: RenderSettings,
     ) -> anyhow::Result<()> {
         let all_rows_available = self.available_rows.contains(&rows.start)
             && self.available_rows.contains(&(rows.end - 1));
@@ -270,7 +270,7 @@ fn runloop(
     let mut search_dir = Dir::Forward;
 
     // Load the initial batch
-    source.ensure_available(0..0, &settings)?;
+    source.ensure_available(0..0, settings)?;
 
     loop {
         if last_file_refresh.elapsed() > file_refresh_interval {
@@ -298,7 +298,7 @@ fn runloop(
             let end_row = (start_row + (term_size.1 - HEADER_HEIGHT - FOOTER_HEIGHT) as usize)
                 .min(total_rows);
             let rows = start_row..end_row;
-            source.ensure_available(rows.clone(), &settings)?;
+            source.ensure_available(rows.clone(), settings)?;
 
             col_widths.clear();
             let mut remaining = term_size.0 - idx_width - 2;
@@ -323,7 +323,7 @@ fn runloop(
                 &col_widths,
                 total_rows,
                 &source.col_stats[cols],
-                &settings,
+                settings,
                 &prompt,
                 &highlights,
                 search_matches.len(),

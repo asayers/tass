@@ -19,8 +19,9 @@ use tracing::debug;
 pub const HEADER_HEIGHT: u16 = 1;
 pub const FOOTER_HEIGHT: u16 = 1;
 
+#[derive(Clone, Copy)]
 pub struct RenderSettings {
-    pub float_dps: usize,
+    pub float_dps: u8,
     pub hide_empty: bool,
 }
 
@@ -35,7 +36,7 @@ pub fn draw(
     col_widths: &[u16],
     total_rows: usize,
     col_stats: &[ColumnStats],
-    settings: &RenderSettings,
+    settings: RenderSettings,
     prompt: &Prompt,
     highlights: &HashSet<usize>,
     n_search_matches: usize,
@@ -153,7 +154,7 @@ fn draw_col(
     x_baseline: u16,
     width: u16,
     col: &dyn Array,
-    settings: &RenderSettings,
+    settings: RenderSettings,
 ) -> anyhow::Result<()> {
     macro_rules! col {
         () => {
@@ -375,7 +376,7 @@ fn draw_float_col<T: ArrowPrimitiveType>(
     x_baseline: u16,
     width: u16,
     col: &PrimitiveArray<T>,
-    settings: &RenderSettings,
+    settings: RenderSettings,
 ) -> anyhow::Result<()>
 where
     T::Native: Display,
