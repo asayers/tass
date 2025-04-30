@@ -1,7 +1,9 @@
 mod backend;
+mod colors;
 mod draw;
 mod prompt;
 mod stats;
+mod strings;
 
 use crate::backend::DataSource;
 use crate::draw::*;

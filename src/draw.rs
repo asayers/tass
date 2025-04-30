@@ -1,19 +1,9 @@
-use crate::prompt::Prompt;
+use crate::colors::col_colors;
 use crate::stats::*;
-use arrow::{
-    array::{
-        Array, BooleanArray, GenericBinaryArray, GenericStringArray, OffsetSizeTrait,
-        PrimitiveArray,
-    },
-    datatypes::*,
-    record_batch::RecordBatch,
-    temporal_conversions,
-};
-use chrono::TimeZone;
-use chrono_tz::Tz;
+use crate::{prompt::Prompt, strings::to_strings};
+use arrow::{array::Array, record_batch::RecordBatch};
 use crossterm::*;
-use num_traits::Zero;
-use std::{collections::HashSet, fmt::Display, io::Write};
+use std::{collections::HashSet, fmt::Alignment, io::Write};
 use tracing::debug;
 
 pub const HEADER_HEIGHT: u16 = 1;
@@ -148,6 +138,14 @@ pub fn draw(
     Ok(())
 }
 
+fn col_alignment(col: &dyn Array) -> Alignment {
+    if col.data_type().is_numeric() {
+        Alignment::Right
+    } else {
+        Alignment::Left
+    }
+}
+
 fn draw_col(
     stdout: &mut impl Write,
     stats: &ColumnStats,
@@ -156,393 +154,40 @@ fn draw_col(
     col: &dyn Array,
     settings: RenderSettings,
 ) -> anyhow::Result<()> {
-    macro_rules! col {
-        () => {
-            col.as_any().downcast_ref().unwrap()
-        };
-    }
-
-    match col.data_type() {
-        DataType::Null => Ok(()),
-        DataType::Boolean => draw_bool_col(stdout, x_baseline, width, col!()),
-
-        DataType::Int8 => draw_int_col::<Int8Type>(stdout, x_baseline, width, col!()),
-        DataType::Int16 => draw_int_col::<Int16Type>(stdout, x_baseline, width, col!()),
-        DataType::Int32 => draw_int_col::<Int32Type>(stdout, x_baseline, width, col!()),
-        DataType::Int64 => draw_int_col::<Int64Type>(stdout, x_baseline, width, col!()),
-        DataType::UInt8 => draw_int_col::<UInt8Type>(stdout, x_baseline, width, col!()),
-        DataType::UInt16 => draw_int_col::<UInt16Type>(stdout, x_baseline, width, col!()),
-        DataType::UInt32 => draw_int_col::<UInt32Type>(stdout, x_baseline, width, col!()),
-        DataType::UInt64 => draw_int_col::<UInt64Type>(stdout, x_baseline, width, col!()),
-        DataType::Float16 => {
-            draw_float_col::<Float16Type>(stdout, x_baseline, width, col!(), settings)
-        }
-        DataType::Float32 => {
-            draw_float_col::<Float32Type>(stdout, x_baseline, width, col!(), settings)
-        }
-        DataType::Float64 => {
-            draw_float_col::<Float64Type>(stdout, x_baseline, width, col!(), settings)
-        }
-        DataType::Decimal128(_, _) => fallback(stdout, x_baseline, width, col),
-        DataType::Decimal256(_, _) => fallback(stdout, x_baseline, width, col),
-
-        DataType::Timestamp(TimeUnit::Second, tz) => draw_timestamp_col::<TimestampSecondType>(
-            stdout,
-            x_baseline,
-            width,
-            col!(),
-            tz.as_deref(),
-        ),
-        DataType::Timestamp(TimeUnit::Millisecond, tz) => {
-            draw_timestamp_col::<TimestampMillisecondType>(
-                stdout,
-                x_baseline,
-                width,
-                col!(),
-                tz.as_deref(),
-            )
-        }
-        DataType::Timestamp(TimeUnit::Microsecond, tz) => {
-            draw_timestamp_col::<TimestampMicrosecondType>(
-                stdout,
-                x_baseline,
-                width,
-                col!(),
-                tz.as_deref(),
-            )
-        }
-        DataType::Timestamp(TimeUnit::Nanosecond, tz) => {
-            draw_timestamp_col::<TimestampNanosecondType>(
-                stdout,
-                x_baseline,
-                width,
-                col!(),
-                tz.as_deref(),
-            )
-        }
-        DataType::Date32 => draw_date_col::<Date32Type>(stdout, x_baseline, width, col!()),
-        DataType::Date64 => draw_date_col::<Date64Type>(stdout, x_baseline, width, col!()),
-        DataType::Time32(TimeUnit::Second) => {
-            draw_time_col::<Time32SecondType>(stdout, x_baseline, width, col!())
-        }
-        DataType::Time32(TimeUnit::Millisecond) => {
-            draw_time_col::<Time32MillisecondType>(stdout, x_baseline, width, col!())
-        }
-        DataType::Time32(TimeUnit::Microsecond | TimeUnit::Nanosecond) => {
-            unreachable!()
-        }
-        DataType::Time64(TimeUnit::Second | TimeUnit::Millisecond) => {
-            unreachable!()
-        }
-        DataType::Time64(TimeUnit::Microsecond) => {
-            draw_time_col::<Time64MicrosecondType>(stdout, x_baseline, width, col!())
-        }
-        DataType::Time64(TimeUnit::Nanosecond) => {
-            draw_time_col::<Time64NanosecondType>(stdout, x_baseline, width, col!())
-        }
-        DataType::Duration(_) => fallback(stdout, x_baseline, width, col),
-        DataType::Interval(_) => fallback(stdout, x_baseline, width, col),
-
-        DataType::Utf8 => draw_utf8_col::<i32>(
-            stdout,
-            x_baseline,
-            width,
-            col!(),
-            stats.cardinality.is_some(),
-        ),
-        DataType::LargeUtf8 => draw_utf8_col::<i64>(
-            stdout,
-            x_baseline,
-            width,
-            col!(),
-            stats.cardinality.is_some(),
-        ),
-        DataType::Utf8View => fallback(stdout, x_baseline, width, col),
-
-        DataType::Binary => draw_binary_col::<i32>(stdout, x_baseline, width, col!()),
-        DataType::LargeBinary => draw_binary_col::<i64>(stdout, x_baseline, width, col!()),
-        DataType::FixedSizeBinary(_) => fallback(stdout, x_baseline, width, col),
-        DataType::BinaryView => fallback(stdout, x_baseline, width, col),
-
-        DataType::List(_) => fallback(stdout, x_baseline, width, col),
-        DataType::FixedSizeList(_, _) => fallback(stdout, x_baseline, width, col),
-        DataType::LargeList(_) => fallback(stdout, x_baseline, width, col),
-        DataType::ListView(_) => fallback(stdout, x_baseline, width, col),
-        DataType::LargeListView(_) => fallback(stdout, x_baseline, width, col),
-
-        DataType::Struct(_) => fallback(stdout, x_baseline, width, col),
-        DataType::Union(_, _) => fallback(stdout, x_baseline, width, col),
-        DataType::Dictionary(_, _) => fallback(stdout, x_baseline, width, col),
-        DataType::Map(_, _) => fallback(stdout, x_baseline, width, col),
-        DataType::RunEndEncoded(_, _) => fallback(stdout, x_baseline, width, col),
-    }
-}
-
-fn fallback(
-    stdout: &mut impl Write,
-    x_baseline: u16,
-    width: u16,
-    col: &dyn Array,
-) -> anyhow::Result<()> {
-    use arrow::util::display::*;
-    let options = FormatOptions::default();
-    let formatter = ArrayFormatter::try_new(col, &options)?;
-    for row in 0..col.len() {
-        let txt = formatter.value(row).to_string();
+    let strings = to_strings(col, settings);
+    let align = col_alignment(col);
+    let colors = col_colors(col, stats);
+    for (row, (txt, color)) in strings.zip(colors).enumerate() {
         stdout.queue(cursor::MoveTo(
             x_baseline + 2,
             u16::try_from(row).unwrap() + HEADER_HEIGHT,
         ))?;
-        print_text(stdout, &txt, width)?;
+
+        print_text(stdout, &txt, width, align, color)?;
     }
     Ok(())
 }
 
-fn oklch_to_color(oklch: [f32; 3]) -> style::Color {
-    use color::{ColorSpace, Oklch};
-    let [r, g, b] = Oklch::to_linear_srgb(oklch);
-    style::Color::Rgb {
-        r: (r * 255.) as u8,
-        g: (g * 255.) as u8,
-        b: (b * 255.) as u8,
-    }
-}
-
-fn draw_utf8_col<T: OffsetSizeTrait>(
+fn print_text(
     stdout: &mut impl Write,
-    x_baseline: u16,
+    mut txt: &str,
     width: u16,
-    col: &GenericStringArray<T>,
-    is_categorical: bool,
+    align: Alignment,
+    color: Option<style::Color>,
 ) -> anyhow::Result<()> {
-    for (row, val) in col.iter().enumerate() {
-        let Some(val) = val else { continue };
-        stdout.queue(cursor::MoveTo(
-            x_baseline + 2,
-            u16::try_from(row).unwrap() + HEADER_HEIGHT,
-        ))?;
-        if is_categorical {
-            let mut hash = 7;
-            for byte in val.bytes() {
-                hash = ((hash << 5) + hash) + byte;
+    match align {
+        Alignment::Left => (),
+        Alignment::Right => {
+            let w = (width as usize).saturating_sub(txt.len());
+            if w > 0 {
+                write!(stdout, "{:<w$}", " ", w = w)?;
             }
-            let fg = oklch_to_color([0.9, 0.07, hash as f32 * 360. / 255.]);
-            stdout.queue(style::SetForegroundColor(fg))?;
         }
-        print_text(stdout, val, width)?;
-        if is_categorical {
-            stdout.queue(style::SetForegroundColor(style::Color::Reset))?;
-        }
+        Alignment::Center => todo!(),
     }
-
-    Ok(())
-}
-
-fn draw_binary_col<T: OffsetSizeTrait>(
-    stdout: &mut impl Write,
-    x_baseline: u16,
-    width: u16,
-    col: &GenericBinaryArray<T>,
-) -> anyhow::Result<()> {
-    for (row, val) in col.iter().enumerate() {
-        let Some(val) = val else { continue };
-        let txt = val.escape_ascii().to_string();
-        stdout.queue(cursor::MoveTo(
-            x_baseline + 2,
-            u16::try_from(row).unwrap() + HEADER_HEIGHT,
-        ))?;
-        print_text(stdout, &txt, width)?;
+    if let Some(fg) = color {
+        stdout.queue(style::SetForegroundColor(fg))?;
     }
-
-    Ok(())
-}
-
-fn draw_int_col<T: ArrowPrimitiveType>(
-    stdout: &mut impl Write,
-    x_baseline: u16,
-    width: u16,
-    col: &PrimitiveArray<T>,
-) -> anyhow::Result<()>
-where
-    T::Native: Display,
-    T::Native: PartialOrd,
-    T::Native: Zero,
-{
-    draw_num_col(stdout, x_baseline, width, col, 0)
-}
-
-fn draw_float_col<T: ArrowPrimitiveType>(
-    stdout: &mut impl Write,
-    x_baseline: u16,
-    width: u16,
-    col: &PrimitiveArray<T>,
-    settings: RenderSettings,
-) -> anyhow::Result<()>
-where
-    T::Native: Display,
-    T::Native: PartialOrd,
-    T::Native: Zero,
-{
-    draw_num_col(stdout, x_baseline, width, col, settings.float_dps)
-}
-
-fn draw_num_col<T: ArrowPrimitiveType>(
-    stdout: &mut impl Write,
-    x_baseline: u16,
-    width: u16,
-    col: &PrimitiveArray<T>,
-    prec: usize,
-) -> anyhow::Result<()>
-where
-    T::Native: Display,
-    T::Native: PartialOrd,
-    T::Native: Zero, // half::f16 doesn't implement Signed
-{
-    let mut buf = String::new();
-
-    for (row, val) in col.iter().enumerate() {
-        let Some(val) = val else { continue };
-        stdout.queue(cursor::MoveTo(
-            x_baseline + 2,
-            u16::try_from(row).unwrap() + HEADER_HEIGHT,
-        ))?;
-        {
-            buf.clear();
-            use std::fmt::Write;
-            write!(&mut buf, "{val:.prec$}")?;
-        }
-        // right-align
-        let w = (width as usize).saturating_sub(buf.len());
-        if w > 0 {
-            write!(stdout, "{:<w$}", " ", w = w)?;
-        }
-        let zero = T::Native::zero();
-        if val == zero {
-            let fg = oklch_to_color([0.75, 0.0, 0.0]);
-            stdout.queue(style::SetForegroundColor(fg))?;
-        }
-        if val < zero {
-            let fg = oklch_to_color([0.8, 0.15, 0.0]);
-            stdout.queue(style::SetForegroundColor(fg))?;
-        }
-        print_text(stdout, &buf, width)?;
-        stdout.queue(style::SetForegroundColor(style::Color::Reset))?;
-    }
-
-    Ok(())
-}
-
-fn draw_bool_col(
-    stdout: &mut impl Write,
-    x_baseline: u16,
-    width: u16,
-    col: &BooleanArray,
-) -> anyhow::Result<()> {
-    let mut buf = String::new();
-
-    for (row, val) in col.iter().enumerate() {
-        let Some(val) = val else { continue };
-        stdout.queue(cursor::MoveTo(
-            x_baseline + 2,
-            u16::try_from(row).unwrap() + HEADER_HEIGHT,
-        ))?;
-        buf.clear();
-        use std::fmt::Write;
-        // TODO: Colour
-        write!(&mut buf, "{val}")?;
-        print_text(stdout, &buf, width)?;
-    }
-
-    Ok(())
-}
-
-fn draw_timestamp_col<T: ArrowPrimitiveType>(
-    stdout: &mut impl Write,
-    x_baseline: u16,
-    width: u16,
-    col: &PrimitiveArray<T>,
-    tz: Option<&str>,
-) -> anyhow::Result<()>
-where
-    T::Native: Into<i64>,
-{
-    let mut buf = String::new();
-    for (row, val) in col.iter().enumerate() {
-        let Some(val) = val else { continue };
-        stdout.queue(cursor::MoveTo(
-            x_baseline + 2,
-            u16::try_from(row).unwrap() + HEADER_HEIGHT,
-        ))?;
-        buf.clear();
-        use std::fmt::Write;
-        let datetime = temporal_conversions::as_datetime::<T>(val.into()).unwrap();
-        if let Some(tz) = tz {
-            let tz: Tz = tz.parse().unwrap();
-            let datetime = tz.from_utc_datetime(&datetime);
-            write!(&mut buf, "{datetime}")?;
-        } else {
-            write!(&mut buf, "{datetime}")?;
-        }
-        print_text(stdout, &buf, width)?;
-    }
-
-    Ok(())
-}
-
-fn draw_date_col<T: ArrowPrimitiveType>(
-    stdout: &mut impl Write,
-    x_baseline: u16,
-    width: u16,
-    col: &PrimitiveArray<T>,
-) -> anyhow::Result<()>
-where
-    T::Native: Into<i64>,
-{
-    let mut buf = String::new();
-
-    for (row, val) in col.iter().enumerate() {
-        let Some(val) = val else { continue };
-        stdout.queue(cursor::MoveTo(
-            x_baseline + 2,
-            u16::try_from(row).unwrap() + HEADER_HEIGHT,
-        ))?;
-        buf.clear();
-        use std::fmt::Write;
-        let date = temporal_conversions::as_date::<T>(val.into()).unwrap();
-        write!(&mut buf, "{date}")?;
-        print_text(stdout, &buf, width)?;
-    }
-
-    Ok(())
-}
-
-fn draw_time_col<T: ArrowPrimitiveType>(
-    stdout: &mut impl Write,
-    x_baseline: u16,
-    width: u16,
-    col: &PrimitiveArray<T>,
-) -> anyhow::Result<()>
-where
-    T::Native: Into<i64>,
-{
-    let mut buf = String::new();
-    for (row, val) in col.iter().enumerate() {
-        let Some(val) = val else { continue };
-        stdout.queue(cursor::MoveTo(
-            x_baseline + 2,
-            u16::try_from(row).unwrap() + HEADER_HEIGHT,
-        ))?;
-        buf.clear();
-        use std::fmt::Write;
-        let time = temporal_conversions::as_time::<T>(val.into()).unwrap();
-        write!(&mut buf, "{time}")?;
-        print_text(stdout, &buf, width)?;
-    }
-
-    Ok(())
-}
-
-fn print_text(stdout: &mut impl Write, mut txt: &str, width: u16) -> anyhow::Result<()> {
     let mut truncated = false;
     if let Some(idx) = txt.find('\n') {
         txt = &txt[..idx];
@@ -553,14 +198,15 @@ fn print_text(stdout: &mut impl Write, mut txt: &str, width: u16) -> anyhow::Res
         txt = &txt[..slice_until];
         truncated = true;
     }
+    stdout.queue(style::Print(txt))?;
+    if color.is_some() {
+        stdout.queue(style::SetForegroundColor(style::Color::Reset))?;
+    }
     if truncated {
         stdout
-            .queue(style::Print(txt))?
             .queue(style::SetAttribute(style::Attribute::Reverse))?
             .queue(style::Print(">"))?
             .queue(style::SetAttribute(style::Attribute::Reset))?;
-    } else {
-        stdout.queue(style::Print(txt))?;
     }
     Ok(())
 }
