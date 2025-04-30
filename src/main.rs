@@ -214,9 +214,12 @@ impl CachedSource {
             .zip(self.big_df.columns())
             .enumerate()
         {
-            let new_stats = ColumnStats::new(field.name(), col, settings)?;
+            let new_stats = ColumnStats::new(field.name(), col, settings);
             match idx.cmp(&self.all_col_stats.len()) {
-                Ordering::Less => self.all_col_stats[idx].merge(new_stats),
+                Ordering::Less => {
+                    let x = &mut self.all_col_stats[idx];
+                    *x = x.merge(new_stats);
+                }
                 Ordering::Equal => self.all_col_stats.push(new_stats),
                 Ordering::Greater => panic!(),
             }
@@ -227,7 +230,7 @@ impl CachedSource {
         for target in &self.rearranged_columns {
             if let Some((idx, _)) = self.big_df.schema().column_with_name(target) {
                 self.available_cols.push(idx);
-                self.col_stats.push(self.all_col_stats[idx].clone());
+                self.col_stats.push(self.all_col_stats[idx]);
             }
         }
         let explicit_up_to = self.available_cols.len();
@@ -236,7 +239,7 @@ impl CachedSource {
             let hidden = settings.hide_empty && col.null_count() == col.len();
             if !explicit && !hidden {
                 self.available_cols.push(idx);
-                self.col_stats.push(self.all_col_stats[idx].clone());
+                self.col_stats.push(self.all_col_stats[idx]);
             }
         }
         debug!(took=?start.elapsed(), "Refined the stats");

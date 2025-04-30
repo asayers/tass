@@ -19,7 +19,7 @@ pub fn col_colors(
     }
     match col.data_type() {
         DataType::Boolean => bool_colors(col!()),
-        _ if stats.cardinality.is_some() => low_card(col, settings),
+        _ if stats.low_cardinality() => low_card(col, settings),
         DataType::Int8 => num_colors::<Int8Type>(col!()),
         DataType::Int16 => num_colors::<Int16Type>(col!()),
         DataType::Int32 => num_colors::<Int32Type>(col!()),
