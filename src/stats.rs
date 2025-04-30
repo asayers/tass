@@ -6,30 +6,14 @@ use arrow::{
 
 #[derive(Debug, Clone)]
 pub struct ColumnStats {
-    pub min_max: Option<MinMax>,
     /// The length (in chars) of the longest value, when formatted (including the header)
     pub ideal_width: u16,
     /// `None` means "more than 255"
     pub cardinality: Option<u8>,
 }
 
-#[derive(Debug, Copy, Clone)]
-pub struct MinMax {
-    pub min: f64,
-    pub max: f64,
-}
-
 impl ColumnStats {
     pub fn merge(&mut self, other: ColumnStats) {
-        self.min_max = self
-            .min_max
-            .zip(other.min_max)
-            .map(|(x, y)| MinMax {
-                min: x.min.min(y.min),
-                max: x.max.max(y.max),
-            })
-            .or(self.min_max)
-            .or(other.min_max);
         self.ideal_width = self.ideal_width.max(other.ideal_width);
         self.cardinality = self
             .cardinality
@@ -135,10 +119,6 @@ impl ColumnStats {
             .max()
             .unwrap_or(0);
         Ok(ColumnStats {
-            min_max: min.zip(max).map(|(min, max)| MinMax {
-                min: min as f64,
-                max: max as f64,
-            }),
             ideal_width: max_len,
             cardinality: None,
         })
@@ -168,7 +148,6 @@ impl ColumnStats {
             .max()
             .unwrap_or(0);
         Ok(ColumnStats {
-            min_max: min.zip(max).map(|(min, max)| MinMax { min, max }),
             ideal_width: max_len,
             cardinality: None,
         })
@@ -193,7 +172,6 @@ impl ColumnStats {
         let unique_vals: std::collections::HashSet<&str> = col.iter().flatten().collect();
 
         Ok(ColumnStats {
-            min_max: None,
             ideal_width: max_len,
             cardinality: u8::try_from(unique_vals.len()).ok(),
         })
@@ -214,7 +192,6 @@ impl ColumnStats {
             _ => unreachable!(),
         };
         Ok(ColumnStats {
-            min_max: None,
             ideal_width: max_len,
             cardinality: None,
         })
@@ -223,7 +200,6 @@ impl ColumnStats {
     fn fixed_len(max_len: u16) -> ColumnStats {
         ColumnStats {
             ideal_width: max_len,
-            min_max: None,
             cardinality: None,
         }
     }
@@ -231,7 +207,6 @@ impl ColumnStats {
     fn fallback(col: &dyn Array) -> anyhow::Result<ColumnStats> {
         Ok(ColumnStats {
             ideal_width: column_width(col)? as u16,
-            min_max: None,
             cardinality: None,
         })
     }
