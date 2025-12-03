@@ -92,7 +92,11 @@ impl Prompt {
                 KeyCode::Char('n') => Some(Cmd::SearchNext),
                 KeyCode::Char('N') => Some(Cmd::SearchPrev),
                 KeyCode::Char('g') => {
-                    if let Ok(x) = self.input.parse::<usize>() {
+                    if self.input.is_empty() {
+                        // `less` goes to the top by default if there's no input
+                        // for `g`.
+                        Some(Cmd::RowTop)
+                    } else if let Ok(x) = self.input.parse::<usize>() {
                         self.input.clear();
                         Some(Cmd::RowGoTo(x.saturating_sub(1)))
                     } else {
