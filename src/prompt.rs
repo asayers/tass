@@ -70,7 +70,7 @@ impl Prompt {
                 KeyCode::Left | KeyCode::Char('h') => Some(Cmd::ColLeft),
                 KeyCode::Down | KeyCode::Char('j') => Some(Cmd::RowDown),
                 KeyCode::Up | KeyCode::Char('k') => Some(Cmd::RowUp),
-                KeyCode::End | KeyCode::Char('G') => Some(Cmd::RowBottom),
+                KeyCode::End | KeyCode::Char('G') | KeyCode::Char('>') => Some(Cmd::RowBottom),
                 KeyCode::Char('F') | KeyCode::Char('f') => {
                     self.mode = Mode::Follow;
                     Some(Cmd::Redraw)
@@ -91,7 +91,7 @@ impl Prompt {
                 }
                 KeyCode::Char('n') => Some(Cmd::SearchNext),
                 KeyCode::Char('N') => Some(Cmd::SearchPrev),
-                KeyCode::Char('g') => {
+                KeyCode::Char('g') | KeyCode::Char('<') => {
                     if self.input.is_empty() {
                         // `less` goes to the top by default if there's no input
                         // for `g`.
