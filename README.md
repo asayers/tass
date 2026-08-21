@@ -14,7 +14,7 @@ right-aligns them and shows negative values in red.
 <img src="https://github.com/asayers/tass/raw/master/demo.gif">
 
 This demo shows data being piped into (an older version of) tass. You can also
-open files which are still being appeanded to, and new rows will appear as the
+open files which are still being appended to, and new rows will appear as the
 file grows.
 
 ## Installing
